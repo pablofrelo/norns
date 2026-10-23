@@ -82,8 +82,16 @@ static pixman_color_t pc(uint32_t rgb)
 	};
 }
 
+/* Pixman przy jednolitym wypełnieniu NIE przycina do obrazka — robimy to sami. */
 static void rect(pixman_image_t *img, int x, int y, int w, int h, uint32_t rgb)
 {
+	int iw = pixman_image_get_width(img), ih = pixman_image_get_height(img);
+	if (x < 0) { w += x; x = 0; }
+	if (y < 0) { h += y; y = 0; }
+	if (x + w > iw) w = iw - x;
+	if (y + h > ih) h = ih - y;
+	if (w <= 0 || h <= 0)
+		return;
 	pixman_color_t c = pc(rgb);
 	pixman_rectangle16_t r = { x, y, w, h };
 	pixman_image_fill_rectangles(PIXMAN_OP_SRC, img, &c, 1, &r);

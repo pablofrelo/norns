@@ -30,7 +30,7 @@ const struct theme themes[] = {
 	},
 	{
 		.name = "muthur", .label = "MU/TH/UR",
-		.font = "Spleen:pixelsize=16",
+		.font = "Spleen:pixelsize=16",  /* bitmapowe .otb, 8x16 */
 		.bg = 0x050806, .line = 0x163d22, .dim = 0x4f9a68, .fg = 0x8cffb0,
 		.accent = 0xd4ffe0, .warn = 0xffb000, .alarm = 0xff5a4a,
 		.focus = 0x8cffb0, .unfocus = 0x163d22,
@@ -811,6 +811,19 @@ int main(void)
 				river_window_manager_v1_manage_dirty(wm);   /* manage przerysuje paski */
 			}
 		}
+	}
+
+	/* zerwane połączenie: powiedz dlaczego, zamiast znikać po cichu */
+	int err = wl_display_get_error(display);
+	if (err) {
+		const struct wl_interface *iface;
+		uint32_t id;
+		uint32_t code = wl_display_get_protocol_error(display, &iface, &id);
+		if (iface)
+			fprintf(stderr, "norns: błąd protokołu %s#%u, kod %u\n", iface->name, id, code);
+		else
+			fprintf(stderr, "norns: błąd połączenia z Waylandem (errno %d)\n", err);
+		return 1;
 	}
 
 	river_window_manager_v1_destroy(wm);
