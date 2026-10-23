@@ -19,10 +19,17 @@
 #define BORDER 2
 #define C8(x)  ((uint32_t)((x) & 0xff) * 0x01010101u)   /* 8-bit -> 32-bit kanał koloru */
 
+/* Font i paleta foota ustalane są przy starcie okna — stąd osobna komenda na motyw. */
+static const char *const term_gruvbox[] = { "foot", NULL };
+static const char *const term_muthur[] = {
+	"foot", "-o", "main.font=Spleen:pixelsize=16", "-o", "main.initial-color-theme=light", NULL
+};
+
 const struct theme themes[] = {
 	{
 		.name = "gruvbox", .label = "GRUVBOX",
 		.font = "JetBrainsMono Nerd Font:pixelsize=14",
+		.term = term_gruvbox,
 		.bg = 0x282828, .line = 0x504945, .dim = 0x928374, .fg = 0xebdbb2,
 		.accent = 0x8ec07c, .warn = 0xfabd2f, .alarm = 0xfb4934,
 		.focus = 0x8ec07c, .unfocus = 0x3c3836,
@@ -31,6 +38,7 @@ const struct theme themes[] = {
 	{
 		.name = "muthur", .label = "MU/TH/UR",
 		.font = "Spleen:pixelsize=16",  /* bitmapowe .otb, 8x16 */
+		.term = term_muthur,
 		.bg = 0x050806, .line = 0x163d22, .dim = 0x4f9a68, .fg = 0x8cffb0,
 		.accent = 0xd4ffe0, .warn = 0xffb000, .alarm = 0xff5a4a,
 		.focus = 0x8cffb0, .unfocus = 0x163d22,
@@ -38,8 +46,6 @@ const struct theme themes[] = {
 	},
 };
 int theme_idx;
-
-static const char *const term[] = { "foot", NULL };
 
 enum action { SPAWN, CLOSE, QUIT, VIEW, SEND_TAG, FOCUS_OUT, SEND_OUT, THEME_TOGGLE };
 
@@ -58,7 +64,7 @@ struct key {
 	{ SUPER | CTRL, XKB_KEY_##n, SEND_TAG, (n) - 1, NULL }
 
 static const struct key keys[] = {
-	{ SUPER,        XKB_KEY_Return, SPAWN,     0, term },
+	{ SUPER,        XKB_KEY_Return, SPAWN,     0, NULL },  /* NULL = terminal motywu */
 	{ SUPER,        XKB_KEY_q,      CLOSE,     0, NULL },
 	{ SUPER,        XKB_KEY_Escape, QUIT,      0, NULL },  /* wyjście z norns, nie z rivera */
 	{ SUPER,        XKB_KEY_t,      THEME_TOGGLE, 0, NULL },
@@ -288,7 +294,7 @@ static void run(const struct key *k)
 
 	switch (k->act) {
 	case SPAWN:
-		spawn(k->cmd);
+		spawn(k->cmd ? k->cmd : THEME->term);
 		break;
 	case CLOSE:
 		close_focused = true;
