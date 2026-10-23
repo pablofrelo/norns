@@ -39,7 +39,7 @@ const struct theme themes[] = {
 };
 int theme_idx;
 
-static const char *const term[] = { "konsole", NULL };
+static const char *const term[] = { "foot", NULL };
 
 enum action { SPAWN, CLOSE, QUIT, VIEW, SEND_TAG, FOCUS_OUT, SEND_OUT, THEME_TOGGLE };
 
