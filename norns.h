@@ -52,6 +52,7 @@ struct output {
 	struct node *roots[NTAGS];      /* osobne drzewo na każdy tag */
 	int tag;                        /* aktualnie widoczny tag */
 	struct surf bar, wall;
+	int ax, ay, aw, ah;             /* obszar na okna (bez paneli i paska) */
 	int tag_x[NTAGS + 1];           /* granice klikalnych tagów na pasku */
 	int theme_x;                    /* od tego x klik przełącza motyw */
 };
@@ -64,7 +65,13 @@ struct win {
 	int tag;
 	struct node *leaf;
 	bool fresh;                     /* nowe okno, jeszcze bez ssd/tiled */
-	char *title;
+	char *title, *app_id;
+	struct win *parent;             /* dialog -> okno, do którego należy */
+	int min_w, min_h, max_w, max_h; /* podpowiedź rozmiaru od okna */
+	bool floating;                  /* pływa nad kafelkami, poza drzewem BSP */
+	int float_pending;              /* 0 nic, 1 rozmiar wg okna, 2 zaproponuj 60% ekranu */
+	bool tiled_dirty;               /* trzeba powiedzieć oknu, czy jest kafelkiem */
+	int dw, dh;                     /* rzeczywisty rozmiar (event dimensions) */
 	int x, y, w, h;                 /* treść okna (bez ramki) */
 };
 

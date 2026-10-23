@@ -47,7 +47,7 @@ const struct theme themes[] = {
 };
 int theme_idx;
 
-enum action { SPAWN, CLOSE, QUIT, VIEW, SEND_TAG, FOCUS_OUT, SEND_OUT, THEME_TOGGLE };
+enum action { SPAWN, CLOSE, QUIT, VIEW, SEND_TAG, FOCUS_OUT, SEND_OUT, THEME_TOGGLE, FLOAT_TOGGLE };
 
 struct key {
 	uint32_t mods;
@@ -68,6 +68,7 @@ static const struct key keys[] = {
 	{ SUPER,        XKB_KEY_q,      CLOSE,     0, NULL },
 	{ SUPER,        XKB_KEY_Escape, QUIT,      0, NULL },  /* wyjście z norns, nie z rivera */
 	{ SUPER,        XKB_KEY_t,      THEME_TOGGLE, 0, NULL },
+	{ SUPER,        XKB_KEY_f,      FLOAT_TOGGLE, 0, NULL },
 	{ SUPER,        XKB_KEY_comma,  FOCUS_OUT, -1, NULL },
 	{ SUPER,        XKB_KEY_period, FOCUS_OUT, +1, NULL },
 	{ SUPER | CTRL, XKB_KEY_comma,  SEND_OUT,  -1, NULL },
@@ -215,6 +216,26 @@ static struct output *neighbor(struct output *o, int dir)
 	return wl_container_of(l, n, link);
 }
 
+/* Okna, które zawsze pływają (np. wybór pliku z portalu, który nie podaje rodzica). */
+static const char *const float_app_ids[] = {
+	"xdg-desktop-portal-gtk",
+	"org.freedesktop.impl.portal.desktop.kde",
+	NULL,
+};
+
+/* Dialog: ma rodzica, ma stały rozmiar albo jest na liście wyżej. */
+static bool should_float(struct win *w)
+{
+	if (w->parent)
+		return true;
+	if (w->max_w > 0 && w->max_h > 0 && w->min_w == w->max_w && w->min_h == w->max_h)
+		return true;
+	for (int i = 0; w->app_id && float_app_ids[i]; i++)
+		if (!strcmp(w->app_id, float_app_ids[i]))
+			return true;
+	return false;
+}
+
 static void detach(struct win *w)
 {
 	if (w->leaf)
@@ -229,7 +250,8 @@ static void attach(struct win *w, struct output *o, int tag)
 	                   focused->tag == tag && focused->leaf ? focused : NULL;
 	w->out = o;
 	w->tag = tag;
-	bsp_insert(&o->roots[tag], w, near);
+	if (!w->floating)
+		bsp_insert(&o->roots[tag], w, near);
 }
 
 static void center_pointer(struct output *o)
@@ -328,6 +350,17 @@ static void run(const struct key *k)
 	case THEME_TOGGLE:
 		toggle_theme();
 		break;
+	case FLOAT_TOGGLE:
+		if (focused && focused->out) {
+			struct output *fo = focused->out;
+			int tag = focused->tag;
+			detach(focused);
+			focused->floating = !focused->floating;
+			focused->float_pending = focused->floating ? 2 : 0;
+			focused->tiled_dirty = true;
+			attach(focused, fo, tag);
+		}
+		break;
 	}
 }
 
@@ -341,12 +374,17 @@ static void win_closed(void *data, struct river_window_v1 *rw)
 		if (focused == w)
 			set_focus(p ? first_leaf(p)->win : NULL);
 	} else if (focused == w) {
-		set_focus(NULL);
+		set_focus(w->parent && visible(w->parent) ? w->parent : NULL);  /* dialog -> rodzic */
 	}
+	struct win *o;
+	wl_list_for_each(o, &windows, link)
+		if (o->parent == w)
+			o->parent = NULL;
 	river_node_v1_destroy(w->rn);
 	river_window_v1_destroy(rw);
 	wl_list_remove(&w->link);
 	free(w->title);
+	free(w->app_id);
 	free(w);
 }
 
@@ -357,10 +395,35 @@ static void win_title(void *data, struct river_window_v1 *rw, const char *title)
 	w->title = title ? strdup(title) : NULL;
 }
 
-static void win_dimensions_hint(void *d, struct river_window_v1 *rw, int32_t a, int32_t b, int32_t c, int32_t e) {}
-static void win_dimensions(void *d, struct river_window_v1 *rw, int32_t w, int32_t h) {}
-static void win_app_id(void *d, struct river_window_v1 *rw, const char *s) {}
-static void win_parent(void *d, struct river_window_v1 *rw, struct river_window_v1 *p) {}
+static void win_dimensions_hint(void *data, struct river_window_v1 *rw,
+                                int32_t min_w, int32_t min_h, int32_t max_w, int32_t max_h)
+{
+	struct win *w = data;
+	w->min_w = min_w;
+	w->min_h = min_h;
+	w->max_w = max_w;
+	w->max_h = max_h;
+}
+
+static void win_dimensions(void *data, struct river_window_v1 *rw, int32_t width, int32_t height)
+{
+	struct win *w = data;
+	w->dw = width;
+	w->dh = height;
+}
+
+static void win_app_id(void *data, struct river_window_v1 *rw, const char *app_id)
+{
+	struct win *w = data;
+	free(w->app_id);
+	w->app_id = app_id ? strdup(app_id) : NULL;
+}
+
+static void win_parent(void *data, struct river_window_v1 *rw, struct river_window_v1 *parent)
+{
+	struct win *w = data;
+	w->parent = parent ? river_window_v1_get_user_data(parent) : NULL;
+}
 static void win_decoration_hint(void *d, struct river_window_v1 *rw, uint32_t h) {}
 static void win_pointer_move_requested(void *d, struct river_window_v1 *rw, struct river_seat_v1 *s) {}
 static void win_pointer_resize_requested(void *d, struct river_window_v1 *rw, struct river_seat_v1 *s, uint32_t e) {}
@@ -569,14 +632,28 @@ static void wm_manage_start(void *d, struct river_window_manager_v1 *m)
 	wl_list_for_each(w, &windows, link) {
 		if (w->out || !act)
 			continue;
-		attach(w, act, act->tag);
+		if (w->fresh) {
+			w->floating = should_float(w);
+			w->float_pending = w->floating ? 1 : 0;
+			w->tiled_dirty = true;
+		}
+		/* dialog ląduje tam, gdzie jego rodzic */
+		struct output *to = w->floating && w->parent && w->parent->out ? w->parent->out : act;
+		attach(w, to, w->floating && w->parent && w->parent->out ? w->parent->tag : to->tag);
 		if (w->fresh) {
 			w->fresh = false;
 			river_window_v1_use_ssd(w->rw);
-			river_window_v1_set_tiled(w->rw, RIVER_WINDOW_V1_EDGES_TOP | RIVER_WINDOW_V1_EDGES_BOTTOM |
-			                                 RIVER_WINDOW_V1_EDGES_LEFT | RIVER_WINDOW_V1_EDGES_RIGHT);
 			set_focus(w);
 		}
+	}
+
+	wl_list_for_each(w, &windows, link) {
+		if (!w->tiled_dirty)
+			continue;
+		w->tiled_dirty = false;
+		river_window_v1_set_tiled(w->rw, w->floating ? RIVER_WINDOW_V1_EDGES_NONE :
+		                          RIVER_WINDOW_V1_EDGES_TOP | RIVER_WINDOW_V1_EDGES_BOTTOM |
+		                          RIVER_WINDOW_V1_EDGES_LEFT | RIVER_WINDOW_V1_EDGES_RIGHT);
 	}
 
 	if (close_focused && focused)
@@ -604,13 +681,27 @@ static void wm_manage_start(void *d, struct river_window_manager_v1 *m)
 		o->wall.w = o->w;
 		o->wall.h = o->h;
 
+		o->ax = ax;
+		o->ay = ay + bh;
+		o->aw = aw;
+		o->ah = ah - bh;
+
 		struct node *r = o->roots[o->tag];
 		if (r)
-			layout(r, ax + GAP / 2, ay + bh + GAP / 2, aw - GAP, ah - bh - GAP);
+			layout(r, o->ax + GAP / 2, o->ay + GAP / 2, o->aw - GAP, o->ah - GAP);
 	}
-	wl_list_for_each(w, &windows, link)
-		if (visible(w))
+	wl_list_for_each(w, &windows, link) {
+		if (!visible(w))
+			continue;
+		if (!w->floating)
 			river_window_v1_propose_dimensions(w->rw, w->w, w->h);
+		else if (w->float_pending == 1)                    /* dialog: niech sam wybierze */
+			river_window_v1_propose_dimensions(w->rw, 0, 0);
+		else if (w->float_pending == 2)                    /* Super+F: 60% obszaru */
+			river_window_v1_propose_dimensions(w->rw, w->out->aw * 3 / 5, w->out->ah * 3 / 5);
+		if (w->floating)
+			w->float_pending = 0;
+	}
 
 	wl_list_for_each(s, &seats, link) {
 		if (s->binds_new) {
@@ -640,13 +731,32 @@ static void wm_render_start(void *d, struct river_window_manager_v1 *m)
 			river_window_v1_hide(w->rw);
 			continue;
 		}
+		if (w->floating) {
+			/* wyśrodkuj nad rodzicem (jeśli widoczny), inaczej nad obszarem monitora */
+			int ax = w->out->ax, ay = w->out->ay, aw = w->out->aw, ah = w->out->ah;
+			if (w->parent && visible(w->parent)) {
+				ax = w->parent->x;
+				ay = w->parent->y;
+				aw = w->parent->w;
+				ah = w->parent->h;
+			}
+			w->w = w->dw;
+			w->h = w->dh;
+			w->x = ax + (aw - w->w) / 2;
+			w->y = ay + (ah - w->h) / 2;
+		}
 		uint32_t c = w == focused ? THEME->focus : THEME->unfocus;
 		river_window_v1_show(w->rw);
 		river_node_v1_set_position(w->rn, w->x, w->y);
+		if (w->floating)
+			river_node_v1_place_top(w->rn);    /* nad kafelkami (pasek i tak wyżej) */
 		river_window_v1_set_borders(w->rw, RIVER_WINDOW_V1_EDGES_TOP | RIVER_WINDOW_V1_EDGES_BOTTOM |
 		                                   RIVER_WINDOW_V1_EDGES_LEFT | RIVER_WINDOW_V1_EDGES_RIGHT,
 		                            BORDER, C8(c >> 16), C8(c >> 8), C8(c), 0xffffffffu);
 	}
+
+	if (focused && focused->floating && visible(focused))
+		river_node_v1_place_top(focused->rn);  /* pływające z fokusem na wierzchu */
 
 	struct output *o;
 	wl_list_for_each(o, &outputs, link)
