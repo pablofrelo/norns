@@ -3,13 +3,13 @@ PROTOS    = river-window-management-v1 river-xkb-bindings-v1 river-layer-shell-v
 
 CFLAGS ?= -O2 -g
 CFLAGS += -std=c11 -Wall -Wextra -Wno-unused-parameter -Iprotocol \
-          $(shell pkg-config --cflags wayland-client xkbcommon)
-LDLIBS += $(shell pkg-config --libs wayland-client)
+          $(shell pkg-config --cflags wayland-client wayland-cursor xkbcommon fcft pixman-1)
+LDLIBS += $(shell pkg-config --libs wayland-client wayland-cursor fcft pixman-1)
 
 HDRS = $(PROTOS:%=protocol/%-client-protocol.h)
-SRCS = norns.c $(PROTOS:%=protocol/%-protocol.c)
+SRCS = norns.c urd.c $(PROTOS:%=protocol/%-protocol.c)
 
-norns: $(SRCS) $(HDRS)
+norns: $(SRCS) $(HDRS) norns.h
 	$(CC) $(CFLAGS) -o $@ $(SRCS) $(LDLIBS)
 
 protocol/%-client-protocol.h: $(PROTO_DIR)/%.xml

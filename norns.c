@@ -1,32 +1,47 @@
 // norns — BSP window manager for river (river-window-management-v1)
 #define _POSIX_C_SOURCE 200809L
 #include <fcntl.h>
+#include <locale.h>
+#include <poll.h>
 #include <signal.h>
-#include <stdbool.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/timerfd.h>
+#include <time.h>
 #include <unistd.h>
-#include <wayland-client.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
-#include "river-layer-shell-v1-client-protocol.h"
-#include "river-window-management-v1-client-protocol.h"
-#include "river-xkb-bindings-v1-client-protocol.h"
+#include "norns.h"
 
 /* ---------- config ---------- */
 
 #define GAP    8
 #define BORDER 2
-#define NTAGS  9
-#define C8(x)  ((uint32_t)(x) * 0x01010101u)   /* 8-bit -> 32-bit kolor */
+#define C8(x)  ((uint32_t)((x) & 0xff) * 0x01010101u)   /* 8-bit -> 32-bit kanał koloru */
 
-static const uint32_t col_focus[4]   = { C8(0x8e), C8(0xc0), C8(0x7c), C8(0xff) }; /* gruvbox aqua */
-static const uint32_t col_unfocus[4] = { C8(0x3c), C8(0x38), C8(0x36), C8(0xff) }; /* gruvbox bg1 */
+const struct theme themes[] = {
+	{
+		.name = "gruvbox", .label = "GRUVBOX",
+		.font = "JetBrainsMono Nerd Font:pixelsize=14",
+		.bg = 0x282828, .line = 0x504945, .dim = 0x928374, .fg = 0xebdbb2,
+		.accent = 0x8ec07c, .warn = 0xfabd2f, .alarm = 0xfb4934,
+		.focus = 0x8ec07c, .unfocus = 0x3c3836,
+		.wall = 0x1d2021, .dot = 0x32302f,
+	},
+	{
+		.name = "muthur", .label = "MU/TH/UR",
+		.font = "Spleen:pixelsize=16",
+		.bg = 0x050806, .line = 0x163d22, .dim = 0x4f9a68, .fg = 0x8cffb0,
+		.accent = 0xd4ffe0, .warn = 0xffb000, .alarm = 0xff5a4a,
+		.focus = 0x8cffb0, .unfocus = 0x163d22,
+		.wall = 0x050806, .dot = 0x163d22,
+	},
+};
+int theme_idx;
 
 static const char *const term[] = { "konsole", NULL };
 
-enum action { SPAWN, CLOSE, QUIT, VIEW, SEND_TAG, FOCUS_OUT, SEND_OUT };
+enum action { SPAWN, CLOSE, QUIT, VIEW, SEND_TAG, FOCUS_OUT, SEND_OUT, THEME_TOGGLE };
 
 struct key {
 	uint32_t mods;
@@ -46,6 +61,7 @@ static const struct key keys[] = {
 	{ SUPER,        XKB_KEY_Return, SPAWN,     0, term },
 	{ SUPER,        XKB_KEY_q,      CLOSE,     0, NULL },
 	{ SUPER,        XKB_KEY_Escape, QUIT,      0, NULL },  /* wyjście z norns, nie z rivera */
+	{ SUPER,        XKB_KEY_t,      THEME_TOGGLE, 0, NULL },
 	{ SUPER,        XKB_KEY_comma,  FOCUS_OUT, -1, NULL },
 	{ SUPER,        XKB_KEY_period, FOCUS_OUT, +1, NULL },
 	{ SUPER | CTRL, XKB_KEY_comma,  SEND_OUT,  -1, NULL },
@@ -57,34 +73,6 @@ static const struct key keys[] = {
 
 /* ---------- stan ---------- */
 
-struct node {                       /* węzeł drzewa BSP */
-	struct node *parent, *a, *b;    /* a/b tylko w węzłach wewnętrznych */
-	struct win *win;                /* tylko w liściach */
-	bool side_by_side;              /* podział pionową kreską (a | b) */
-	int x, y, w, h;                 /* kafel z ostatniego layoutu */
-};
-
-struct output {
-	struct wl_list link;
-	struct river_output_v1 *ro;
-	int x, y, w, h;
-	struct river_layer_shell_output_v1 *lo;
-	int ux, uy, uw, uh;             /* obszar bez paneli (ironbar itp.) */
-	struct node *roots[NTAGS];      /* osobne drzewo na każdy tag */
-	int tag;                        /* aktualnie widoczny tag */
-};
-
-struct win {
-	struct wl_list link;
-	struct river_window_v1 *rw;
-	struct river_node_v1 *rn;
-	struct output *out;             /* NULL = jeszcze nigdzie nie umieszczone */
-	int tag;
-	struct node *leaf;
-	bool fresh;                     /* nowe okno, jeszcze bez ssd/tiled */
-	int x, y, w, h;                 /* treść okna (bez ramki) */
-};
-
 struct seat {
 	struct wl_list link;
 	struct river_seat_v1 *rs;
@@ -94,11 +82,14 @@ struct seat {
 };
 
 static struct wl_display *display;
-static struct river_window_manager_v1 *wm;
+struct river_window_manager_v1 *wm;
+struct wl_compositor *compositor;
+struct wl_shm *shm;
 static struct river_xkb_bindings_v1 *xkb;
 static struct river_layer_shell_v1 *layer_shell;
-static struct wl_list windows, outputs, seats;
-static struct win *focused;
+struct wl_list windows, outputs;
+static struct wl_list seats;
+struct win *focused;
 static bool focus_dirty, close_focused, running = true;
 static int ptr_x, ptr_y;
 static bool ptr_known, warp;
@@ -259,6 +250,37 @@ static void spawn(const char *const *cmd)
 	}
 }
 
+/* ---------- akcje wołane też z paska ---------- */
+
+void view_tag(struct output *o, int tag)
+{
+	if (o->tag == tag)
+		return;
+	o->tag = tag;
+	set_focus(first_on(o));
+	river_window_manager_v1_manage_dirty(wm);   /* z paska nie ma manage w drodze */
+}
+
+/* Przełącza motyw: ramki, pasek, tapeta, plus skrypt użytkownika dla aplikacji. */
+void toggle_theme(void)
+{
+	theme_idx = !theme_idx;
+	struct output *o;
+	wl_list_for_each(o, &outputs, link)
+		o->wall.dirty = true;
+
+	char path[512];
+	const char *cfg = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
+	if (cfg && *cfg)
+		snprintf(path, sizeof path, "%s/norns/theme", cfg);
+	else
+		snprintf(path, sizeof path, "%s/.config/norns/theme", home ? home : "");
+	if (access(path, X_OK) == 0)
+		spawn((const char *const[]){ path, THEME->name, NULL });
+
+	river_window_manager_v1_manage_dirty(wm);
+}
+
 /* Wołane z eventu pressed — zmieniamy tylko nasze dane, requesty idą w manage. */
 static void run(const struct key *k)
 {
@@ -275,10 +297,8 @@ static void run(const struct key *k)
 		river_window_manager_v1_stop(wm);
 		break;
 	case VIEW:
-		if (o && o->tag != k->arg) {
-			o->tag = k->arg;
-			set_focus(first_on(o));
-		}
+		if (o)
+			view_tag(o, k->arg);
 		break;
 	case SEND_TAG:
 		if (focused && focused->out && focused->tag != k->arg) {
@@ -299,6 +319,9 @@ static void run(const struct key *k)
 			attach(focused, n, n->tag);
 		}
 		break;
+	case THEME_TOGGLE:
+		toggle_theme();
+		break;
 	}
 }
 
@@ -317,13 +340,20 @@ static void win_closed(void *data, struct river_window_v1 *rw)
 	river_node_v1_destroy(w->rn);
 	river_window_v1_destroy(rw);
 	wl_list_remove(&w->link);
+	free(w->title);
 	free(w);
+}
+
+static void win_title(void *data, struct river_window_v1 *rw, const char *title)
+{
+	struct win *w = data;
+	free(w->title);
+	w->title = title ? strdup(title) : NULL;
 }
 
 static void win_dimensions_hint(void *d, struct river_window_v1 *rw, int32_t a, int32_t b, int32_t c, int32_t e) {}
 static void win_dimensions(void *d, struct river_window_v1 *rw, int32_t w, int32_t h) {}
 static void win_app_id(void *d, struct river_window_v1 *rw, const char *s) {}
-static void win_title(void *d, struct river_window_v1 *rw, const char *s) {}
 static void win_parent(void *d, struct river_window_v1 *rw, struct river_window_v1 *p) {}
 static void win_decoration_hint(void *d, struct river_window_v1 *rw, uint32_t h) {}
 static void win_pointer_move_requested(void *d, struct river_window_v1 *rw, struct river_seat_v1 *s) {}
@@ -375,6 +405,7 @@ static void out_removed(void *data, struct river_output_v1 *ro)
 	wl_list_for_each(w, &windows, link)
 		if (w->out == o)
 			detach(w);
+	urd_output_fini(o);
 	if (o->lo)
 		river_layer_shell_output_v1_destroy(o->lo);
 	river_output_v1_destroy(ro);
@@ -550,14 +581,26 @@ static void wm_manage_start(void *d, struct river_window_manager_v1 *m)
 	if (act && (!focused || !visible(focused)))
 		set_focus(first_on(act));
 
+	int bh = urd_bar_height();
 	wl_list_for_each(o, &outputs, link) {
+		/* obszar: bez cudzych paneli (layer shell), minus nasz pasek u góry */
+		bool u = o->uw > 0 && o->uh > 0;
+		int ax = u ? o->ux : o->x, ay = u ? o->uy : o->y;
+		int aw = u ? o->uw : o->w, ah = u ? o->uh : o->h;
+
+		o->bar.x = ax;
+		o->bar.y = ay;
+		o->bar.w = aw;
+		o->bar.h = bh;
+		o->bar.dirty = true;            /* pasek tani — rysujemy po każdym manage */
+		o->wall.x = o->x;
+		o->wall.y = o->y;
+		o->wall.w = o->w;
+		o->wall.h = o->h;
+
 		struct node *r = o->roots[o->tag];
-		if (!r)
-			continue;
-		if (o->uw > 0 && o->uh > 0)
-			layout(r, o->ux + GAP / 2, o->uy + GAP / 2, o->uw - GAP, o->uh - GAP);
-		else
-			layout(r, o->x + GAP / 2, o->y + GAP / 2, o->w - GAP, o->h - GAP);
+		if (r)
+			layout(r, ax + GAP / 2, ay + bh + GAP / 2, aw - GAP, ah - bh - GAP);
 	}
 	wl_list_for_each(w, &windows, link)
 		if (visible(w))
@@ -591,13 +634,18 @@ static void wm_render_start(void *d, struct river_window_manager_v1 *m)
 			river_window_v1_hide(w->rw);
 			continue;
 		}
-		const uint32_t *c = w == focused ? col_focus : col_unfocus;
+		uint32_t c = w == focused ? THEME->focus : THEME->unfocus;
 		river_window_v1_show(w->rw);
 		river_node_v1_set_position(w->rn, w->x, w->y);
 		river_window_v1_set_borders(w->rw, RIVER_WINDOW_V1_EDGES_TOP | RIVER_WINDOW_V1_EDGES_BOTTOM |
 		                                   RIVER_WINDOW_V1_EDGES_LEFT | RIVER_WINDOW_V1_EDGES_RIGHT,
-		                            BORDER, c[0], c[1], c[2], c[3]);
+		                            BORDER, C8(c >> 16), C8(c >> 8), C8(c), 0xffffffffu);
 	}
+
+	struct output *o;
+	wl_list_for_each(o, &outputs, link)
+		urd_render(o);
+
 	river_window_manager_v1_render_finish(wm);
 }
 
@@ -616,6 +664,7 @@ static void wm_output(void *d, struct river_window_manager_v1 *m, struct river_o
 	struct output *o = calloc(1, sizeof *o);
 	o->ro = ro;
 	river_output_v1_add_listener(ro, &out_listener, o);
+	urd_output_init(o);
 	if (layer_shell) {
 		o->lo = river_layer_shell_v1_get_output(layer_shell, ro);
 		river_layer_shell_output_v1_add_listener(o->lo, &lo_listener, o);
@@ -660,6 +709,7 @@ static const struct river_window_manager_v1_listener wm_listener = {
 /* Najpierw tylko zapamiętujemy globale; bindujemy po roundtripie, żeby
  * żaden event wm nie przyszedł, zanim podepniemy listener. */
 static uint32_t wm_name, wm_ver, xkb_name, xkb_ver, ls_name;
+static bool seat_bound;
 
 static void reg_global(void *d, struct wl_registry *reg, uint32_t name, const char *iface, uint32_t ver)
 {
@@ -671,6 +721,13 @@ static void reg_global(void *d, struct wl_registry *reg, uint32_t name, const ch
 		xkb_ver = ver < 3 ? ver : 3;
 	} else if (!strcmp(iface, river_layer_shell_v1_interface.name)) {
 		ls_name = name;
+	} else if (!strcmp(iface, wl_compositor_interface.name)) {
+		compositor = wl_registry_bind(reg, name, &wl_compositor_interface, ver < 4 ? ver : 4);
+	} else if (!strcmp(iface, wl_shm_interface.name)) {
+		shm = wl_registry_bind(reg, name, &wl_shm_interface, 1);
+	} else if (!strcmp(iface, wl_seat_interface.name) && !seat_bound) {
+		seat_bound = true;
+		urd_bind_seat(reg, name);
 	}
 }
 
@@ -684,6 +741,7 @@ static const struct wl_registry_listener reg_listener = {
 int main(void)
 {
 	signal(SIGCHLD, SIG_IGN);   /* dzieci (terminal itp.) nie zostają zombie */
+	setlocale(LC_CTYPE, "");    /* UTF-8 w tytułach okien */
 
 	display = wl_display_connect(NULL);
 	if (!display) {
@@ -699,10 +757,12 @@ int main(void)
 	wl_registry_add_listener(reg, &reg_listener, NULL);
 	wl_display_roundtrip(display);
 
-	if (!wm_name || !xkb_name) {
+	if (!wm_name || !xkb_name || !compositor || !shm) {
 		fprintf(stderr, "norns: brak river_window_manager_v1 / river_xkb_bindings_v1 (to nie river?)\n");
 		return 1;
 	}
+	if (!urd_init())
+		return 1;
 
 	/* xkb i layer shell przed wm: eventy output/seat od razu ich używają */
 	xkb = wl_registry_bind(reg, xkb_name, &river_xkb_bindings_v1_interface, xkb_ver);
@@ -711,8 +771,47 @@ int main(void)
 	wm = wl_registry_bind(reg, wm_name, &river_window_manager_v1_interface, wm_ver);
 	river_window_manager_v1_add_listener(wm, &wm_listener, NULL);
 
-	while (running && wl_display_dispatch(display) != -1)
-		;
+	/* Pętla: Wayland + budzik co sekundę (zegar na pasku zmienia się co minutę). */
+	int tfd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC);
+	struct itimerspec its = { .it_interval = { 1, 0 }, .it_value = { 1, 0 } };
+	timerfd_settime(tfd, 0, &its, NULL);
+	struct pollfd fds[2] = {
+		{ .fd = wl_display_get_fd(display), .events = POLLIN },
+		{ .fd = tfd, .events = POLLIN },
+	};
+	int last_min = -1;
+
+	while (running) {
+		while (wl_display_prepare_read(display) != 0)
+			wl_display_dispatch_pending(display);
+		wl_display_flush(display);
+		if (poll(fds, 2, -1) < 0) {
+			wl_display_cancel_read(display);
+			continue;
+		}
+		if (fds[0].revents & POLLIN) {
+			if (wl_display_read_events(display) < 0)
+				break;
+		} else {
+			wl_display_cancel_read(display);
+		}
+		if (fds[0].revents & (POLLERR | POLLHUP))
+			break;
+		if (wl_display_dispatch_pending(display) < 0)
+			break;
+
+		if (fds[1].revents & POLLIN) {
+			uint64_t n;
+			if (read(tfd, &n, sizeof n) < 0)
+				continue;
+			time_t now = time(NULL);
+			int min = localtime(&now)->tm_min;
+			if (min != last_min) {
+				last_min = min;
+				river_window_manager_v1_manage_dirty(wm);   /* manage przerysuje paski */
+			}
+		}
+	}
 
 	river_window_manager_v1_destroy(wm);
 	wl_display_disconnect(display);

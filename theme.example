@@ -1,0 +1,13 @@
+#!/bin/sh
+# Przykład ~/.config/norns/theme — norns woła go przy przełączeniu motywu:
+#   theme gruvbox | theme muthur
+# Skopiuj do ~/.config/norns/theme i nadaj prawo wykonania (chmod +x).
+
+case "$1" in
+gruvbox)
+	pkill -USR1 -x foot     # foot: paleta [colors-dark]
+	;;
+muthur)
+	pkill -USR2 -x foot     # foot: paleta [colors-light]
+	;;
+esac
