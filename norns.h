@@ -68,6 +68,21 @@ struct win {
 	int x, y, w, h;                 /* treść okna (bez ramki) */
 };
 
+/* ---------- sensory (sensors.c) ---------- */
+
+struct sensors {
+	int cpu;                        /* % */
+	double ram_gb;                  /* zajęte */
+	int temp;                       /* °C */
+	int bat;                        /* % */
+	char bat_state;                 /* + ładuje, - rozładowuje, = pełna */
+	bool has_temp, has_bat;
+	bool lan, wifi, wg;
+};
+
+extern struct sensors sens;
+void sensors_update(void);
+
 extern struct river_window_manager_v1 *wm;
 extern struct wl_compositor *compositor;
 extern struct wl_shm *shm;
@@ -85,3 +100,4 @@ int urd_bar_height(void);
 void urd_output_init(struct output *o);
 void urd_output_fini(struct output *o);
 void urd_render(struct output *o);   /* tylko w trakcie sekwencji render */
+void urd_redraw_bars(void);          /* poza sekwencjami: zegar i sensory */

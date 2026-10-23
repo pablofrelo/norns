@@ -7,7 +7,7 @@ CFLAGS += -std=c11 -Wall -Wextra -Wno-unused-parameter -Iprotocol \
 LDLIBS += $(shell pkg-config --libs wayland-client wayland-cursor fcft pixman-1)
 
 HDRS = $(PROTOS:%=protocol/%-client-protocol.h)
-SRCS = norns.c urd.c $(PROTOS:%=protocol/%-protocol.c)
+SRCS = norns.c urd.c sensors.c $(PROTOS:%=protocol/%-protocol.c)
 
 norns: $(SRCS) $(HDRS) norns.h
 	$(CC) $(CFLAGS) -o $@ $(SRCS) $(LDLIBS)

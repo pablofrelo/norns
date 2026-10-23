@@ -777,16 +777,15 @@ int main(void)
 	wm = wl_registry_bind(reg, wm_name, &river_window_manager_v1_interface, wm_ver);
 	river_window_manager_v1_add_listener(wm, &wm_listener, NULL);
 
-	/* Pętla: Wayland + budzik co sekundę (zegar na pasku zmienia się co minutę). */
+	/* Pętla: Wayland + budzik co 2 s (zegar i sensory na pasku). */
+	sensors_update();
 	int tfd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC);
-	struct itimerspec its = { .it_interval = { 1, 0 }, .it_value = { 1, 0 } };
+	struct itimerspec its = { .it_interval = { 2, 0 }, .it_value = { 2, 0 } };
 	timerfd_settime(tfd, 0, &its, NULL);
 	struct pollfd fds[2] = {
 		{ .fd = wl_display_get_fd(display), .events = POLLIN },
 		{ .fd = tfd, .events = POLLIN },
 	};
-	int last_min = -1;
-
 	while (running) {
 		while (wl_display_prepare_read(display) != 0)
 			wl_display_dispatch_pending(display);
@@ -810,12 +809,8 @@ int main(void)
 			uint64_t n;
 			if (read(tfd, &n, sizeof n) < 0)
 				continue;
-			time_t now = time(NULL);
-			int min = localtime(&now)->tm_min;
-			if (min != last_min) {
-				last_min = min;
-				river_window_manager_v1_manage_dirty(wm);   /* manage przerysuje paski */
-			}
+			sensors_update();
+			urd_redraw_bars();
 		}
 	}
 

@@ -153,7 +153,49 @@ int urd_bar_height(void)
 	return fonts[theme_idx]->height + 8;
 }
 
-/*  [1][2][3]…[9]  tytuł okna ...............  Fri 23.10 21:41  [ GRUVBOX ] */
+/* Sensory od prawej do lewej, kończąc przed `right`. Zwraca x początku. */
+static int draw_sensors(pixman_image_t *img, int right, int h, int min_x)
+{
+	const struct theme *t = THEME;
+	struct { char s[24]; uint32_t c; } it[8];
+	int n = 0;
+
+	if (sens.wg) {
+		snprintf(it[n].s, sizeof it[n].s, "WG");
+		it[n++].c = t->accent;
+	}
+	snprintf(it[n].s, sizeof it[n].s, "%s", sens.lan ? "LAN" : sens.wifi ? "WIFI" : "OFFLINE");
+	it[n++].c = sens.lan || sens.wifi ? t->fg : t->alarm;
+
+	snprintf(it[n].s, sizeof it[n].s, "CPU %d%%", sens.cpu);
+	it[n++].c = sens.cpu >= 90 ? t->alarm : sens.cpu >= 70 ? t->warn : t->fg;
+
+	snprintf(it[n].s, sizeof it[n].s, "RAM %.1fG", sens.ram_gb);
+	it[n++].c = t->fg;
+
+	if (sens.has_temp) {
+		snprintf(it[n].s, sizeof it[n].s, "%d°C", sens.temp);
+		it[n++].c = sens.temp >= 90 ? t->alarm : sens.temp >= 80 ? t->warn : t->fg;
+	}
+	if (sens.has_bat) {
+		snprintf(it[n].s, sizeof it[n].s, "BAT %d%%%c", sens.bat, sens.bat_state);
+		bool low = sens.bat_state == '-';
+		it[n++].c = low && sens.bat <= 10 ? t->alarm : low && sens.bat <= 20 ? t->warn : t->fg;
+	}
+
+	int x = right;
+	for (int i = n - 1; i >= 0; i--) {
+		int w = text_width(it[i].s);
+		if (x - w < min_x)
+			break;
+		x -= w;
+		text(img, x, 0, h, x + w, it[i].s, it[i].c);
+		x -= 2 * PAD;
+	}
+	return x + 2 * PAD;
+}
+
+/*  [1]…[9]  tytuł okna ......  WG LAN CPU RAM °C BAT  Fri 23.10 21:41  [ GRUVBOX ] */
 static void draw_bar(struct output *o, pixman_image_t *img, int w, int h)
 {
 	const struct theme *t = THEME;
@@ -175,7 +217,7 @@ static void draw_bar(struct output *o, pixman_image_t *img, int w, int h)
 	}
 	o->tag_x[NTAGS] = x;
 
-	/* od prawej: motyw, zegar */
+	/* od prawej: motyw, zegar, sensory */
 	char clock[32];
 	time_t now = time(NULL);
 	strftime(clock, sizeof clock, "%a %d.%m %H:%M", localtime(&now));
@@ -189,9 +231,11 @@ static void draw_bar(struct output *o, pixman_image_t *img, int w, int h)
 	int cx = o->theme_x - text_width(clock) - PAD;
 	text(img, cx, 0, h, o->theme_x, clock, t->fg);
 
+	int sx = draw_sensors(img, cx - 2 * PAD, h, x);
+
 	/* tytuł okna z fokusem — tylko na jego monitorze */
 	if (focused && focused->out == o && focused->tag == o->tag && focused->title)
-		text(img, x + 2 * PAD, 0, h, cx - 2 * PAD, focused->title, t->fg);
+		text(img, x + 2 * PAD, 0, h, sx - 2 * PAD, focused->title, t->fg);
 }
 
 /* Prosty, powtarzalny generator: te same gwiazdy po każdym przerysowaniu. */
@@ -260,8 +304,8 @@ void urd_output_fini(struct output *o)
 	surf_fini(&o->wall);
 }
 
-/* Rysuje i commituje powierzchnię zsynchronizowaną z render_finish. */
-static void surf_draw(struct surf *s, struct output *o,
+/* Rysuje i commituje powierzchnię; sync = razem z najbliższym render_finish. */
+static void surf_draw(struct surf *s, struct output *o, bool sync,
                       void (*draw)(struct output *, pixman_image_t *, int, int))
 {
 	if (s->w <= 0 || s->h <= 0)
@@ -272,7 +316,8 @@ static void surf_draw(struct surf *s, struct output *o,
 	if (!b)
 		return;
 	draw(o, b->img, s->w, s->h);
-	river_shell_surface_v1_sync_next_commit(s->ss);
+	if (sync)
+		river_shell_surface_v1_sync_next_commit(s->ss);
 	wl_surface_attach(s->wl, b->wb, 0, 0);
 	wl_surface_damage_buffer(s->wl, 0, 0, s->w, s->h);
 	wl_surface_commit(s->wl);
@@ -283,12 +328,22 @@ static void surf_draw(struct surf *s, struct output *o,
 
 void urd_render(struct output *o)
 {
-	surf_draw(&o->wall, o, draw_wall);
-	surf_draw(&o->bar, o, draw_bar);
+	surf_draw(&o->wall, o, true, draw_wall);
+	surf_draw(&o->bar, o, true, draw_bar);
 	river_node_v1_set_position(o->wall.node, o->wall.x, o->wall.y);
 	river_node_v1_set_position(o->bar.node, o->bar.x, o->bar.y);
 	river_node_v1_place_bottom(o->wall.node);   /* tapeta pod wszystkim */
 	river_node_v1_place_top(o->bar.node);       /* pasek nad wszystkim */
+}
+
+/* Zegar i sensory zmieniają się bez udziału okien — commit od razu, bez sync. */
+void urd_redraw_bars(void)
+{
+	struct output *o;
+	wl_list_for_each(o, &outputs, link) {
+		o->bar.dirty = true;
+		surf_draw(&o->bar, o, false, draw_bar);
+	}
 }
 
 /* ---------- mysz na pasku ---------- */
