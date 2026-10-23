@@ -16,6 +16,7 @@
 
 #define GAP    8
 #define BORDER 2
+#define NTAGS  9
 #define C8(x)  ((uint32_t)(x) * 0x01010101u)   /* 8-bit -> 32-bit kolor */
 
 static const uint32_t col_focus[4]   = { C8(0x8e), C8(0xc0), C8(0x7c), C8(0xff) }; /* gruvbox aqua */
@@ -23,20 +24,32 @@ static const uint32_t col_unfocus[4] = { C8(0x3c), C8(0x38), C8(0x36), C8(0xff) 
 
 static const char *const term[] = { "konsole", NULL };
 
-enum action { SPAWN, CLOSE, QUIT };
+enum action { SPAWN, CLOSE, QUIT, VIEW, SEND_TAG, FOCUS_OUT, SEND_OUT };
 
 struct key {
 	uint32_t mods;
 	uint32_t sym;
 	enum action act;
+	int arg;                        /* numer tagu / kierunek ±1 */
 	const char *const *cmd;
 };
 
 #define SUPER RIVER_SEAT_V1_MODIFIERS_MOD4
+#define CTRL  RIVER_SEAT_V1_MODIFIERS_CTRL
+#define TAGKEYS(n) \
+	{ SUPER,        XKB_KEY_##n, VIEW,     (n) - 1, NULL }, \
+	{ SUPER | CTRL, XKB_KEY_##n, SEND_TAG, (n) - 1, NULL }
+
 static const struct key keys[] = {
-	{ SUPER, XKB_KEY_Return, SPAWN, term },
-	{ SUPER, XKB_KEY_q,      CLOSE, NULL },
-	{ SUPER, XKB_KEY_Escape, QUIT,  NULL },  /* wyjście z norns, nie z rivera */
+	{ SUPER,        XKB_KEY_Return, SPAWN,     0, term },
+	{ SUPER,        XKB_KEY_q,      CLOSE,     0, NULL },
+	{ SUPER,        XKB_KEY_Escape, QUIT,      0, NULL },  /* wyjście z norns, nie z rivera */
+	{ SUPER,        XKB_KEY_comma,  FOCUS_OUT, -1, NULL },
+	{ SUPER,        XKB_KEY_period, FOCUS_OUT, +1, NULL },
+	{ SUPER | CTRL, XKB_KEY_comma,  SEND_OUT,  -1, NULL },
+	{ SUPER | CTRL, XKB_KEY_period, SEND_OUT,  +1, NULL },
+	TAGKEYS(1), TAGKEYS(2), TAGKEYS(3), TAGKEYS(4), TAGKEYS(5),
+	TAGKEYS(6), TAGKEYS(7), TAGKEYS(8), TAGKEYS(9),
 };
 #define NKEYS (sizeof keys / sizeof keys[0])
 
@@ -49,18 +62,23 @@ struct node {                       /* węzeł drzewa BSP */
 	int x, y, w, h;                 /* kafel z ostatniego layoutu */
 };
 
-struct win {
-	struct wl_list link;
-	struct river_window_v1 *rw;
-	struct river_node_v1 *rn;
-	struct node *leaf;              /* NULL = nowe, jeszcze nie w drzewie */
-	int x, y, w, h;                 /* treść okna (bez ramki) */
-};
-
 struct output {
 	struct wl_list link;
 	struct river_output_v1 *ro;
 	int x, y, w, h;
+	struct node *roots[NTAGS];      /* osobne drzewo na każdy tag */
+	int tag;                        /* aktualnie widoczny tag */
+};
+
+struct win {
+	struct wl_list link;
+	struct river_window_v1 *rw;
+	struct river_node_v1 *rn;
+	struct output *out;             /* NULL = jeszcze nigdzie nie umieszczone */
+	int tag;
+	struct node *leaf;
+	bool fresh;                     /* nowe okno, jeszcze bez ssd/tiled */
+	int x, y, w, h;                 /* treść okna (bez ramki) */
 };
 
 struct seat {
@@ -74,9 +92,10 @@ static struct wl_display *display;
 static struct river_window_manager_v1 *wm;
 static struct river_xkb_bindings_v1 *xkb;
 static struct wl_list windows, outputs, seats;
-static struct node *root;
 static struct win *focused;
 static bool focus_dirty, close_focused, running = true;
+static int ptr_x, ptr_y;
+static bool ptr_known, warp;
 
 /* ---------- BSP ---------- */
 
@@ -87,17 +106,17 @@ static struct node *first_leaf(struct node *n)
 	return n;
 }
 
-/* Nowe okno dzieli kafel okna z fokusem na pół. */
-static void bsp_insert(struct win *w)
+/* Wstawia okno do drzewa: dzieli kafel okna `near` (albo pierwszy liść). */
+static void bsp_insert(struct node **root, struct win *w, struct win *near)
 {
 	struct node *leaf = calloc(1, sizeof *leaf);
 	leaf->win = w;
 	w->leaf = leaf;
-	if (!root) {
-		root = leaf;
+	if (!*root) {
+		*root = leaf;
 		return;
 	}
-	struct node *t = focused && focused->leaf ? focused->leaf : first_leaf(root);
+	struct node *t = near ? near->leaf : first_leaf(*root);
 	struct node *old = calloc(1, sizeof *old);
 	*old = *t;                      /* stary liść schodzi piętro niżej */
 	old->parent = t;
@@ -110,13 +129,13 @@ static void bsp_insert(struct win *w)
 }
 
 /* Usuwa okno; rodzeństwo zajmuje miejsce rodzica. Zwraca ten węzeł. */
-static struct node *bsp_remove(struct win *w)
+static struct node *bsp_remove(struct node **root, struct win *w)
 {
 	struct node *leaf = w->leaf, *p = leaf->parent;
 	free(leaf);
 	w->leaf = NULL;
 	if (!p) {
-		root = NULL;
+		*root = NULL;
 		return NULL;
 	}
 	struct node *sib = p->a == leaf ? p->b : p->a;
@@ -150,6 +169,73 @@ static void layout(struct node *n, int x, int y, int w, int h)
 	}
 }
 
+/* ---------- okna, monitory, fokus ---------- */
+
+static void set_focus(struct win *w)
+{
+	if (focused != w) {
+		focused = w;
+		focus_dirty = true;
+	}
+}
+
+static bool visible(struct win *w)
+{
+	return w->out && w->tag == w->out->tag;
+}
+
+static struct win *first_on(struct output *o)
+{
+	struct node *r = o->roots[o->tag];
+	return r ? first_leaf(r)->win : NULL;
+}
+
+/* Aktywny monitor: ten pod kursorem, potem ten z fokusem, potem pierwszy. */
+static struct output *active_output(void)
+{
+	struct output *o;
+	if (ptr_known)
+		wl_list_for_each(o, &outputs, link)
+			if (ptr_x >= o->x && ptr_x < o->x + o->w && ptr_y >= o->y && ptr_y < o->y + o->h)
+				return o;
+	if (focused && focused->out)
+		return focused->out;
+	return wl_list_empty(&outputs) ? NULL : wl_container_of(outputs.next, o, link);
+}
+
+static struct output *neighbor(struct output *o, int dir)
+{
+	struct wl_list *l = dir > 0 ? o->link.next : o->link.prev;
+	if (l == &outputs)              /* przeskok przez głowę listy */
+		l = dir > 0 ? l->next : l->prev;
+	struct output *n;
+	return wl_container_of(l, n, link);
+}
+
+static void detach(struct win *w)
+{
+	if (w->leaf)
+		bsp_remove(&w->out->roots[w->tag], w);
+	w->out = NULL;
+}
+
+/* Umieszcza okno na danym tagu monitora; obok fokusu, jeśli on tam jest. */
+static void attach(struct win *w, struct output *o, int tag)
+{
+	struct win *near = focused && focused != w && focused->out == o &&
+	                   focused->tag == tag && focused->leaf ? focused : NULL;
+	w->out = o;
+	w->tag = tag;
+	bsp_insert(&o->roots[tag], w, near);
+}
+
+static void center_pointer(struct output *o)
+{
+	ptr_x = o->x + o->w / 2;
+	ptr_y = o->y + o->h / 2;
+	ptr_known = warp = true;
+}
+
 /* ---------- akcje ---------- */
 
 static void spawn(const char *const *cmd)
@@ -161,11 +247,46 @@ static void spawn(const char *const *cmd)
 	}
 }
 
-static void set_focus(struct win *w)
+/* Wołane z eventu pressed — zmieniamy tylko nasze dane, requesty idą w manage. */
+static void run(const struct key *k)
 {
-	if (focused != w) {
-		focused = w;
-		focus_dirty = true;
+	struct output *o = active_output(), *n;
+
+	switch (k->act) {
+	case SPAWN:
+		spawn(k->cmd);
+		break;
+	case CLOSE:
+		close_focused = true;
+		break;
+	case QUIT:
+		river_window_manager_v1_stop(wm);
+		break;
+	case VIEW:
+		if (o && o->tag != k->arg) {
+			o->tag = k->arg;
+			set_focus(first_on(o));
+		}
+		break;
+	case SEND_TAG:
+		if (focused && focused->out && focused->tag != k->arg) {
+			struct output *fo = focused->out;
+			detach(focused);
+			attach(focused, fo, k->arg);
+		}
+		break;
+	case FOCUS_OUT:
+		if (o && (n = neighbor(o, k->arg)) != o) {
+			center_pointer(n);
+			set_focus(first_on(n));
+		}
+		break;
+	case SEND_OUT:
+		if (focused && focused->out && (n = neighbor(focused->out, k->arg)) != focused->out) {
+			detach(focused);
+			attach(focused, n, n->tag);
+		}
+		break;
 	}
 }
 
@@ -175,7 +296,7 @@ static void win_closed(void *data, struct river_window_v1 *rw)
 {
 	struct win *w = data;
 	if (w->leaf) {
-		struct node *p = bsp_remove(w);
+		struct node *p = bsp_remove(&w->out->roots[w->tag], w);
 		if (focused == w)
 			set_focus(p ? first_leaf(p)->win : NULL);
 	} else if (focused == w) {
@@ -234,9 +355,14 @@ static const struct river_window_v1_listener win_listener = {
 
 /* ---------- river_output_v1 ---------- */
 
+/* Monitor znika: jego okna odpinamy, manage przypnie je do innego. */
 static void out_removed(void *data, struct river_output_v1 *ro)
 {
 	struct output *o = data;
+	struct win *w;
+	wl_list_for_each(w, &windows, link)
+		if (w->out == o)
+			detach(w);
 	river_output_v1_destroy(ro);
 	wl_list_remove(&o->link);
 	free(o);
@@ -271,12 +397,7 @@ static const struct river_output_v1_listener out_listener = {
 
 static void bind_pressed(void *data, struct river_xkb_binding_v1 *xb)
 {
-	const struct key *k = data;
-	switch (k->act) {
-	case SPAWN: spawn(k->cmd); break;
-	case CLOSE: close_focused = true; break;   /* close tylko w manage */
-	case QUIT:  river_window_manager_v1_stop(wm); break;
-	}
+	run(data);
 }
 
 static void bind_released(void *d, struct river_xkb_binding_v1 *xb) {}
@@ -311,12 +432,18 @@ static void seat_window_interaction(void *d, struct river_seat_v1 *rs, struct ri
 	set_focus(river_window_v1_get_user_data(rw));
 }
 
+static void seat_pointer_position(void *d, struct river_seat_v1 *rs, int32_t x, int32_t y)
+{
+	ptr_x = x;
+	ptr_y = y;
+	ptr_known = true;
+}
+
 static void seat_wl_seat(void *d, struct river_seat_v1 *rs, uint32_t name) {}
 static void seat_pointer_leave(void *d, struct river_seat_v1 *rs) {}
 static void seat_shell_surface_interaction(void *d, struct river_seat_v1 *rs, struct river_shell_surface_v1 *ss) {}
 static void seat_op_delta(void *d, struct river_seat_v1 *rs, int32_t dx, int32_t dy) {}
 static void seat_op_release(void *d, struct river_seat_v1 *rs) {}
-static void seat_pointer_position(void *d, struct river_seat_v1 *rs, int32_t x, int32_t y) {}
 static void seat_op_delta_touch(void *d, struct river_seat_v1 *rs, int32_t t, int32_t dx, int32_t dy) {}
 static void seat_op_release_touch(void *d, struct river_seat_v1 *rs, int32_t t) {}
 static void seat_op_cancel_touch(void *d, struct river_seat_v1 *rs, int32_t t) {}
@@ -351,30 +478,41 @@ static void wm_finished(void *d, struct river_window_manager_v1 *m)
 
 static void wm_manage_start(void *d, struct river_window_manager_v1 *m)
 {
+	struct output *o, *act = active_output();
 	struct win *w;
+	struct seat *s;
 
+	/* nowe i osierocone okna lądują na aktywnym monitorze */
 	wl_list_for_each(w, &windows, link) {
-		if (w->leaf)
+		if (w->out || !act)
 			continue;
-		bsp_insert(w);
-		river_window_v1_use_ssd(w->rw);
-		river_window_v1_set_tiled(w->rw, RIVER_WINDOW_V1_EDGES_TOP | RIVER_WINDOW_V1_EDGES_BOTTOM |
-		                                 RIVER_WINDOW_V1_EDGES_LEFT | RIVER_WINDOW_V1_EDGES_RIGHT);
-		set_focus(w);
+		attach(w, act, act->tag);
+		if (w->fresh) {
+			w->fresh = false;
+			river_window_v1_use_ssd(w->rw);
+			river_window_v1_set_tiled(w->rw, RIVER_WINDOW_V1_EDGES_TOP | RIVER_WINDOW_V1_EDGES_BOTTOM |
+			                                 RIVER_WINDOW_V1_EDGES_LEFT | RIVER_WINDOW_V1_EDGES_RIGHT);
+			set_focus(w);
+		}
 	}
 
 	if (close_focused && focused)
 		river_window_v1_close(focused->rw);
 	close_focused = false;
 
-	if (root && !wl_list_empty(&outputs)) {
-		struct output *o = wl_container_of(outputs.next, o, link);  /* na razie 1 monitor */
-		layout(root, o->x + GAP / 2, o->y + GAP / 2, o->w - GAP, o->h - GAP);
-		wl_list_for_each(w, &windows, link)
-			river_window_v1_propose_dimensions(w->rw, w->w, w->h);
-	}
+	/* fokus na niewidocznym oknie (np. wysłanym na inny tag) -> coś widocznego */
+	if (act && (!focused || !visible(focused)))
+		set_focus(first_on(act));
 
-	struct seat *s;
+	wl_list_for_each(o, &outputs, link) {
+		struct node *r = o->roots[o->tag];
+		if (r)
+			layout(r, o->x + GAP / 2, o->y + GAP / 2, o->w - GAP, o->h - GAP);
+	}
+	wl_list_for_each(w, &windows, link)
+		if (visible(w))
+			river_window_v1_propose_dimensions(w->rw, w->w, w->h);
+
 	wl_list_for_each(s, &seats, link) {
 		if (s->binds_new) {
 			for (size_t i = 0; i < NKEYS; i++)
@@ -387,8 +525,10 @@ static void wm_manage_start(void *d, struct river_window_manager_v1 *m)
 			else
 				river_seat_v1_clear_focus(s->rs);
 		}
+		if (warp && river_seat_v1_get_version(s->rs) >= RIVER_SEAT_V1_POINTER_WARP_SINCE_VERSION)
+			river_seat_v1_pointer_warp(s->rs, ptr_x, ptr_y);
 	}
-	focus_dirty = false;
+	focus_dirty = warp = false;
 
 	river_window_manager_v1_manage_finish(wm);
 }
@@ -397,9 +537,12 @@ static void wm_render_start(void *d, struct river_window_manager_v1 *m)
 {
 	struct win *w;
 	wl_list_for_each(w, &windows, link) {
-		if (!w->leaf)
+		if (!visible(w)) {
+			river_window_v1_hide(w->rw);
 			continue;
+		}
 		const uint32_t *c = w == focused ? col_focus : col_unfocus;
+		river_window_v1_show(w->rw);
 		river_node_v1_set_position(w->rn, w->x, w->y);
 		river_window_v1_set_borders(w->rw, RIVER_WINDOW_V1_EDGES_TOP | RIVER_WINDOW_V1_EDGES_BOTTOM |
 		                                   RIVER_WINDOW_V1_EDGES_LEFT | RIVER_WINDOW_V1_EDGES_RIGHT,
@@ -413,6 +556,7 @@ static void wm_window(void *d, struct river_window_manager_v1 *m, struct river_w
 	struct win *w = calloc(1, sizeof *w);
 	w->rw = rw;
 	w->rn = river_window_v1_get_node(rw);
+	w->fresh = true;
 	river_window_v1_add_listener(rw, &win_listener, w);
 	wl_list_insert(windows.prev, &w->link);   /* na koniec listy */
 }
