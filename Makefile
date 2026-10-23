@@ -1,5 +1,5 @@
 PROTO_DIR ?= /usr/share/river-protocols/stable
-PROTOS    = river-window-management-v1 river-xkb-bindings-v1
+PROTOS    = river-window-management-v1 river-xkb-bindings-v1 river-layer-shell-v1
 
 CFLAGS ?= -O2 -g
 CFLAGS += -std=c11 -Wall -Wextra -Wno-unused-parameter -Iprotocol \

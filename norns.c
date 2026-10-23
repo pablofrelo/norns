@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <wayland-client.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
+#include "river-layer-shell-v1-client-protocol.h"
 #include "river-window-management-v1-client-protocol.h"
 #include "river-xkb-bindings-v1-client-protocol.h"
 
@@ -67,6 +68,8 @@ struct output {
 	struct wl_list link;
 	struct river_output_v1 *ro;
 	int x, y, w, h;
+	struct river_layer_shell_output_v1 *lo;
+	int ux, uy, uw, uh;             /* obszar bez paneli (ironbar itp.) */
 	struct node *roots[NTAGS];      /* osobne drzewo na każdy tag */
 	int tag;                        /* aktualnie widoczny tag */
 };
@@ -85,6 +88,7 @@ struct win {
 struct seat {
 	struct wl_list link;
 	struct river_seat_v1 *rs;
+	struct river_layer_shell_seat_v1 *ls;
 	struct river_xkb_binding_v1 *binds[NKEYS];
 	bool binds_new;
 };
@@ -92,6 +96,7 @@ struct seat {
 static struct wl_display *display;
 static struct river_window_manager_v1 *wm;
 static struct river_xkb_bindings_v1 *xkb;
+static struct river_layer_shell_v1 *layer_shell;
 static struct wl_list windows, outputs, seats;
 static struct win *focused;
 static bool focus_dirty, close_focused, running = true;
@@ -370,6 +375,8 @@ static void out_removed(void *data, struct river_output_v1 *ro)
 	wl_list_for_each(w, &windows, link)
 		if (w->out == o)
 			detach(w);
+	if (o->lo)
+		river_layer_shell_output_v1_destroy(o->lo);
 	river_output_v1_destroy(ro);
 	wl_list_remove(&o->link);
 	free(o);
@@ -400,6 +407,21 @@ static const struct river_output_v1_listener out_listener = {
 	.capture_sessions = out_capture_sessions,
 };
 
+/* river_layer_shell_output_v1 — ile miejsca zostaje po panelach */
+static void lo_non_exclusive_area(void *data, struct river_layer_shell_output_v1 *lo,
+                                  int32_t x, int32_t y, int32_t w, int32_t h)
+{
+	struct output *o = data;
+	o->ux = x;
+	o->uy = y;
+	o->uw = w;
+	o->uh = h;
+}
+
+static const struct river_layer_shell_output_v1_listener lo_listener = {
+	.non_exclusive_area = lo_non_exclusive_area,
+};
+
 /* ---------- klawisze ---------- */
 
 static void bind_pressed(void *data, struct river_xkb_binding_v1 *xb)
@@ -423,6 +445,8 @@ static void seat_removed(void *data, struct river_seat_v1 *rs)
 	struct seat *s = data;
 	for (size_t i = 0; i < NKEYS; i++)
 		river_xkb_binding_v1_destroy(s->binds[i]);
+	if (s->ls)
+		river_layer_shell_seat_v1_destroy(s->ls);
 	river_seat_v1_destroy(rs);
 	wl_list_remove(&s->link);
 	free(s);
@@ -470,6 +494,21 @@ static const struct river_seat_v1_listener seat_listener = {
 	.op_cancel_touch = seat_op_cancel_touch,
 };
 
+/* river_layer_shell_seat_v1 — launcher/panel zabrał i oddał klawiaturę */
+static void ls_focus_exclusive(void *d, struct river_layer_shell_seat_v1 *ls) {}
+static void ls_focus_non_exclusive(void *d, struct river_layer_shell_seat_v1 *ls) {}
+
+static void ls_focus_none(void *d, struct river_layer_shell_seat_v1 *ls)
+{
+	focus_dirty = true;     /* oddaj fokus oknu, które go miało */
+}
+
+static const struct river_layer_shell_seat_v1_listener ls_listener = {
+	.focus_exclusive = ls_focus_exclusive,
+	.focus_non_exclusive = ls_focus_non_exclusive,
+	.focus_none = ls_focus_none,
+};
+
 /* ---------- river_window_manager_v1 ---------- */
 
 static void wm_unavailable(void *d, struct river_window_manager_v1 *m)
@@ -513,7 +552,11 @@ static void wm_manage_start(void *d, struct river_window_manager_v1 *m)
 
 	wl_list_for_each(o, &outputs, link) {
 		struct node *r = o->roots[o->tag];
-		if (r)
+		if (!r)
+			continue;
+		if (o->uw > 0 && o->uh > 0)
+			layout(r, o->ux + GAP / 2, o->uy + GAP / 2, o->uw - GAP, o->uh - GAP);
+		else
 			layout(r, o->x + GAP / 2, o->y + GAP / 2, o->w - GAP, o->h - GAP);
 	}
 	wl_list_for_each(w, &windows, link)
@@ -573,6 +616,10 @@ static void wm_output(void *d, struct river_window_manager_v1 *m, struct river_o
 	struct output *o = calloc(1, sizeof *o);
 	o->ro = ro;
 	river_output_v1_add_listener(ro, &out_listener, o);
+	if (layer_shell) {
+		o->lo = river_layer_shell_v1_get_output(layer_shell, ro);
+		river_layer_shell_output_v1_add_listener(o->lo, &lo_listener, o);
+	}
 	wl_list_insert(outputs.prev, &o->link);
 }
 
@@ -581,6 +628,10 @@ static void wm_seat(void *d, struct river_window_manager_v1 *m, struct river_sea
 	struct seat *s = calloc(1, sizeof *s);
 	s->rs = rs;
 	river_seat_v1_add_listener(rs, &seat_listener, s);
+	if (layer_shell) {
+		s->ls = river_layer_shell_v1_get_seat(layer_shell, rs);
+		river_layer_shell_seat_v1_add_listener(s->ls, &ls_listener, s);
+	}
 	for (size_t i = 0; i < NKEYS; i++) {
 		s->binds[i] = river_xkb_bindings_v1_get_xkb_binding(xkb, rs, keys[i].sym, keys[i].mods);
 		river_xkb_binding_v1_add_listener(s->binds[i], &bind_listener, (void *)&keys[i]);
@@ -608,7 +659,7 @@ static const struct river_window_manager_v1_listener wm_listener = {
 
 /* Najpierw tylko zapamiętujemy globale; bindujemy po roundtripie, żeby
  * żaden event wm nie przyszedł, zanim podepniemy listener. */
-static uint32_t wm_name, wm_ver, xkb_name, xkb_ver;
+static uint32_t wm_name, wm_ver, xkb_name, xkb_ver, ls_name;
 
 static void reg_global(void *d, struct wl_registry *reg, uint32_t name, const char *iface, uint32_t ver)
 {
@@ -618,6 +669,8 @@ static void reg_global(void *d, struct wl_registry *reg, uint32_t name, const ch
 	} else if (!strcmp(iface, river_xkb_bindings_v1_interface.name)) {
 		xkb_name = name;
 		xkb_ver = ver < 3 ? ver : 3;
+	} else if (!strcmp(iface, river_layer_shell_v1_interface.name)) {
+		ls_name = name;
 	}
 }
 
@@ -651,8 +704,10 @@ int main(void)
 		return 1;
 	}
 
-	/* xkb przed wm: event seat od razu tworzy skróty */
+	/* xkb i layer shell przed wm: eventy output/seat od razu ich używają */
 	xkb = wl_registry_bind(reg, xkb_name, &river_xkb_bindings_v1_interface, xkb_ver);
+	if (ls_name)    /* opcjonalne: bez tego river nie pokaże paneli/launcherów */
+		layer_shell = wl_registry_bind(reg, ls_name, &river_layer_shell_v1_interface, 1);
 	wm = wl_registry_bind(reg, wm_name, &river_window_manager_v1_interface, wm_ver);
 	river_window_manager_v1_add_listener(wm, &wm_listener, NULL);
 
