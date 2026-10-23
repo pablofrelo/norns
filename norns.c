@@ -1,5 +1,6 @@
 // norns — BSP window manager for river (river-window-management-v1)
 #define _POSIX_C_SOURCE 200809L
+#include <fcntl.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -242,6 +243,12 @@ static void spawn(const char *const *cmd)
 {
 	if (fork() == 0) {
 		setsid();
+		int fd = open("/dev/null", O_RDWR);
+		if (fd >= 0) {
+			dup2(fd, STDOUT_FILENO);
+			dup2(fd, STDERR_FILENO);
+			close(fd);
+		}
 		execvp(cmd[0], (char *const *)cmd);
 		_exit(1);
 	}
