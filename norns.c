@@ -47,6 +47,9 @@ const struct theme themes[] = {
 };
 int theme_idx;
 
+static const char *const browser[] = { "firefox", NULL };
+static const char *const files[] = { "dolphin", NULL };
+
 enum action { SPAWN, CLOSE, QUIT, VIEW, SEND_TAG, FOCUS_OUT, SEND_OUT, THEME_TOGGLE, FLOAT_TOGGLE };
 
 struct key {
@@ -65,6 +68,8 @@ struct key {
 
 static const struct key keys[] = {
 	{ SUPER,        XKB_KEY_Return, SPAWN,     0, NULL },  /* NULL = terminal motywu */
+	{ SUPER,        XKB_KEY_b,      SPAWN,     0, browser },
+	{ SUPER,        XKB_KEY_e,      SPAWN,     0, files },
 	{ SUPER,        XKB_KEY_q,      CLOSE,     0, NULL },
 	{ SUPER,        XKB_KEY_Escape, QUIT,      0, NULL },  /* wyjście z norns, nie z rivera */
 	{ SUPER,        XKB_KEY_t,      THEME_TOGGLE, 0, NULL },
