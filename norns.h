@@ -7,6 +7,8 @@
 #include "river-layer-shell-v1-client-protocol.h"
 #include "river-window-management-v1-client-protocol.h"
 #include "river-xkb-bindings-v1-client-protocol.h"
+#include "fractional-scale-v1-client-protocol.h"
+#include "viewporter-client-protocol.h"
 #include "config.h"                 /* GAP, BORDER, czasy animacji */
 
 #define NTAGS 9
@@ -60,6 +62,10 @@ struct surf {                       /* powierzchnia rysowana przez norns */
 	int x, y, w, h;                 /* gdzie i w jakim rozmiarze ma być */
 	int drawn_w, drawn_h;           /* rozmiar ostatnio narysowanego bufora */
 	bool dirty;
+	struct wp_viewport *vp;         /* skalowanie ułamkowe: bufor w pikselach, */
+	struct wp_fractional_scale_v1 *fs;  /* wyświetlany w rozmiarze logicznym */
+	int scale120;                   /* skala * 120 (120 = 1,0; 150 = 1,25) */
+	int drawn_scale;
 };
 
 struct output {
@@ -146,6 +152,8 @@ void sensors_update_vol(void);
 extern struct river_window_manager_v1 *wm;
 extern struct wl_compositor *compositor;
 extern struct wl_shm *shm;
+extern struct wp_viewporter *viewporter;
+extern struct wp_fractional_scale_manager_v1 *fscale_mgr;
 extern struct wl_list windows, outputs;
 extern struct win *focused;
 

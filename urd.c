@@ -13,9 +13,46 @@
 #include <wayland-cursor.h>
 #include "norns.h"
 
-#define PAD 8                       /* odstępy poziome na pasku */
+#define PAD_BASE 8                  /* odstępy poziome na pasku (logiczne px) */
+static int PAD = PAD_BASE;          /* w pikselach bufora — przeskalowane przy rysowaniu */
 
-static struct fcft_font *fonts[2];  /* po jednym na motyw */
+static struct fcft_font *fonts[2];  /* po jednym na motyw, skala 1 */
+static struct fcft_font *font;      /* font bieżącego rysowania (może być przeskalowany) */
+
+/* Font motywu w danej skali: wzorzec z config.h z przeliczonym pixelsize. */
+static struct {
+	int theme, scale120;
+	struct fcft_font *f;
+} scaled[4];
+
+static struct fcft_font *font_at(int scale120)
+{
+	if (scale120 == 120)
+		return fonts[theme_idx];
+	for (int i = 0; i < 4; i++)
+		if (scaled[i].f && scaled[i].theme == theme_idx && scaled[i].scale120 == scale120)
+			return scaled[i].f;
+	char name[160];
+	const char *pat = themes[theme_idx].font, *ps = strstr(pat, "pixelsize=");
+	if (ps) {
+		int px = atoi(ps + 10);
+		snprintf(name, sizeof name, "%.*spixelsize=%d", (int)(ps - pat), pat, (px * scale120 + 60) / 120);
+	} else {
+		snprintf(name, sizeof name, "%s", pat);
+	}
+	const char *names[] = { name, "monospace" };
+	struct fcft_font *f = fcft_from_name(2, names, NULL);
+	if (!f)
+		return fonts[theme_idx];
+	static int next;
+	if (scaled[next].f)
+		fcft_destroy(scaled[next].f);
+	scaled[next].theme = theme_idx;
+	scaled[next].scale120 = scale120;
+	scaled[next].f = f;
+	next = (next + 1) % 4;
+	return f;
+}
 static struct wl_pointer *pointer;
 static struct wl_surface *ptr_surf, *cursor_surf;
 static struct wl_cursor_image *cursor_img;
@@ -69,7 +106,7 @@ static int text_width(const char *s)
 {
 	int w = 0;
 	while (*s) {
-		const struct fcft_glyph *g = fcft_rasterize_char_utf32(fonts[theme_idx], next_cp(&s), FCFT_SUBPIXEL_NONE);
+		const struct fcft_glyph *g = fcft_rasterize_char_utf32(font, next_cp(&s), FCFT_SUBPIXEL_NONE);
 		if (g)
 			w += g->advance.x;
 	}
@@ -79,7 +116,7 @@ static int text_width(const char *s)
 /* Tekst wyśrodkowany w pionie w pasie [top, top+h); nie wychodzi za max_x. Zwraca x końca. */
 static int text(pixman_image_t *img, int x, int top, int h, int max_x, const char *s, uint32_t rgb)
 {
-	struct fcft_font *f = fonts[theme_idx];
+	struct fcft_font *f = font;
 	int base = top + (h - (f->ascent + f->descent)) / 2 + f->ascent;
 	pixman_color_t c = pc(rgb);
 	pixman_image_t *fill = pixman_image_create_solid_fill(&c);
@@ -310,7 +347,7 @@ static void sky_mark(struct sky *k, pixman_image_t *img)
 	const struct theme *t = THEME;
 	const char *mark = theme_idx == 0 ? "norns" : "MU/TH/UR 6000";
 	k->mark_w = text_width(mark);
-	k->mark_h = fonts[theme_idx]->height;
+	k->mark_h = font->height;
 	k->mark_x = k->w - k->mark_w - 24;
 	k->mark_y = k->h - k->mark_h - 24;
 	rect(img, k->mark_x, k->mark_y, k->mark_w, k->mark_h, t->wall);
@@ -377,6 +414,7 @@ static int sky_pick(struct sky *k)
 /* Pełna tapeta przy zmianie rozmiaru lub motywu — wołane z sekwencji render. */
 static void sky_render(struct output *o, bool sync)
 {
+	font = fonts[theme_idx];            /* tapeta zawsze w skali 1 */
 	struct surf *s = &o->wall;
 	if (s->w <= 0 || s->h <= 0)
 		return;
@@ -476,6 +514,7 @@ static int sky_frame(struct output *o, struct sky *k, uint64_t now)
 
 int urd_sky_frame(uint64_t now)
 {
+	font = fonts[theme_idx];
 	if (theme_idx != 1 || !anim_on)
 		return -1;
 	int next = TWINKLE_MS;
@@ -493,19 +532,42 @@ int urd_sky_frame(uint64_t now)
 
 /* ---------- powierzchnie ---------- */
 
-static void surf_init(struct surf *s, struct output *o)
+/* Compositor podaje skalę monitora, na którym jest pasek (np. 150 = 1,25). */
+static void fs_preferred(void *data, struct wp_fractional_scale_v1 *fs, uint32_t scale)
+{
+	struct surf *s = data;
+	if ((int)scale == s->scale120)
+		return;
+	s->scale120 = scale;
+	s->dirty = true;
+	river_window_manager_v1_manage_dirty(wm);   /* przerysuj w najbliższej sekwencji */
+}
+
+static const struct wp_fractional_scale_v1_listener fs_listener = { .preferred_scale = fs_preferred };
+
+static void surf_init(struct surf *s, struct output *o, bool scaled)
 {
 	s->wl = wl_compositor_create_surface(compositor);
 	wl_surface_set_user_data(s->wl, o);
 	s->ss = river_window_manager_v1_get_shell_surface(wm, s->wl);
 	s->node = river_shell_surface_v1_get_node(s->ss);
 	s->dirty = true;
+	s->scale120 = 120;
+	if (scaled && viewporter && fscale_mgr) {
+		s->vp = wp_viewporter_get_viewport(viewporter, s->wl);
+		s->fs = wp_fractional_scale_manager_v1_get_fractional_scale(fscale_mgr, s->wl);
+		wp_fractional_scale_v1_add_listener(s->fs, &fs_listener, s);
+	}
 }
 
 static void surf_fini(struct surf *s)
 {
 	if (ptr_surf == s->wl)
 		ptr_surf = NULL;
+	if (s->fs)
+		wp_fractional_scale_v1_destroy(s->fs);
+	if (s->vp)
+		wp_viewport_destroy(s->vp);
 	river_node_v1_destroy(s->node);
 	river_shell_surface_v1_destroy(s->ss);
 	wl_surface_destroy(s->wl);
@@ -513,8 +575,8 @@ static void surf_fini(struct surf *s)
 
 void urd_output_init(struct output *o)
 {
-	surf_init(&o->bar, o);
-	surf_init(&o->wall, o);
+	surf_init(&o->bar, o, true);           /* pasek ostry przy skali ułamkowej */
+	surf_init(&o->wall, o, false);
 }
 
 void urd_output_fini(struct output *o)
@@ -534,19 +596,29 @@ static void surf_draw(struct surf *s, struct output *o, bool sync,
 {
 	if (s->w <= 0 || s->h <= 0)
 		return;
-	if (!s->dirty && s->w == s->drawn_w && s->h == s->drawn_h)
+	int scale = s->vp ? s->scale120 : 120;
+	if (!s->dirty && s->w == s->drawn_w && s->h == s->drawn_h && scale == s->drawn_scale)
 		return;
-	struct buf *b = buf_new(s->w, s->h, false, false);
+	/* bufor w pikselach monitora, font i odstępy w tej samej skali */
+	int bw = (s->w * scale + 60) / 120, bh = (s->h * scale + 60) / 120;
+	struct buf *b = buf_new(bw, bh, false, false);
 	if (!b)
 		return;
-	draw(o, b->img, s->w, s->h);
+	font = font_at(scale);
+	PAD = PAD_BASE * scale / 120;
+	draw(o, b->img, bw, bh);
+	font = fonts[theme_idx];
+	PAD = PAD_BASE;
 	if (sync)
 		river_shell_surface_v1_sync_next_commit(s->ss);
 	buf_attach(b, s->wl);
-	wl_surface_damage_buffer(s->wl, 0, 0, s->w, s->h);
+	if (s->vp)
+		wp_viewport_set_destination(s->vp, s->w, s->h);   /* wyświetl w rozmiarze logicznym */
+	wl_surface_damage_buffer(s->wl, 0, 0, bw, bh);
 	wl_surface_commit(s->wl);
 	s->drawn_w = s->w;
 	s->drawn_h = s->h;
+	s->drawn_scale = scale;
 	s->dirty = false;
 }
 
@@ -598,14 +670,16 @@ static void ptr_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t 
 	wl_list_for_each(o, &outputs, link) {
 		if (o->bar.wl != ptr_surf)
 			continue;
-		if (ptr_x >= o->off_x) {
+		/* granice na pasku są w pikselach bufora, kursor w logicznych */
+		int bx = ptr_x * (o->bar.vp ? o->bar.scale120 : 120) / 120;
+		if (bx >= o->off_x) {
 			menu_open = !menu_open;
 			urd_redraw_bars();
 			return;
 		}
 		if (menu_open) {
 			for (int i = 0; i < 4; i++)
-				if (ptr_x >= o->menu_x[i] && ptr_x < o->menu_x[i + 1]) {
+				if (bx >= o->menu_x[i] && bx < o->menu_x[i + 1]) {
 					menu_open = false;
 					urd_redraw_bars();
 					if (i < 3)
@@ -613,12 +687,12 @@ static void ptr_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t 
 					return;
 				}
 		}
-		if (ptr_x >= o->theme_x) {
+		if (bx >= o->theme_x) {
 			toggle_theme();
 			return;
 		}
 		for (int i = 0; i < NTAGS; i++)
-			if (ptr_x >= o->tag_x[i] && ptr_x < o->tag_x[i + 1])
+			if (bx >= o->tag_x[i] && bx < o->tag_x[i + 1])
 				view_tag(o, i);
 		return;
 	}
@@ -685,6 +759,7 @@ bool urd_init(void)
 		}
 	}
 
+	font = fonts[theme_idx];
 	const char *size = getenv("XCURSOR_SIZE");
 	struct wl_cursor_theme *ct = wl_cursor_theme_load(getenv("XCURSOR_THEME"), size ? atoi(size) : 24, shm);
 	cursor_theme = ct;

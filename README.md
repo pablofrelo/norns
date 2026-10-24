@@ -21,6 +21,7 @@ and used daily on my own machine.
 - fullscreen (application requests and a key binding)
 - per-application rules: open an app on a chosen monitor, matched by serial
   number, not by the changing DP-n connector name
+- urd stays sharp on fractionally scaled outputs (e.g. 1.25)
 - urd: clickable tags, window title, network/WireGuard, CPU, RAM, temperature,
   battery, volume, clock, theme switch, power menu
 - MU/TH/UR: green glow around the focused window, twinkling stars, a comet now
@@ -28,11 +29,11 @@ and used daily on my own machine.
 
 ## Requirements
 
-river 0.4 or newer (river-protocols), wayland, wayland-cursor, xkbcommon,
-fcft, pixman, a C11 compiler, make. Optional: `wpctl` (PipeWire) for volume,
+river 0.4 or newer (river-protocols), wayland, wayland-protocols,
+wayland-cursor, xkbcommon, fcft, pixman, a C11 compiler, make. Optional: `wpctl` (PipeWire) for volume,
 `systemctl` for the power menu, foot as the terminal.
 
-On Arch: `pacman -S river wayland libxkbcommon fcft pixman tllist`
+On Arch: `pacman -S river wayland wayland-protocols libxkbcommon fcft pixman tllist`
 
 ## Build and run
 

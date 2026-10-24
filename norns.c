@@ -39,6 +39,8 @@ static struct wl_display *display;
 struct river_window_manager_v1 *wm;
 struct wl_compositor *compositor;
 struct wl_shm *shm;
+struct wp_viewporter *viewporter;                  /* opcjonalne: ostry pasek przy skali 1,25 */
+struct wp_fractional_scale_manager_v1 *fscale_mgr;
 static struct river_xkb_bindings_v1 *xkb;
 static struct river_layer_shell_v1 *layer_shell;
 struct wl_list windows, outputs;
@@ -1383,6 +1385,10 @@ static void reg_global(void *d, struct wl_registry *reg, uint32_t name, const ch
 		ls_name = name;
 	} else if (!strcmp(iface, wl_compositor_interface.name)) {
 		compositor = wl_registry_bind(reg, name, &wl_compositor_interface, ver < 4 ? ver : 4);
+	} else if (!strcmp(iface, wp_viewporter_interface.name)) {
+		viewporter = wl_registry_bind(reg, name, &wp_viewporter_interface, 1);
+	} else if (!strcmp(iface, wp_fractional_scale_manager_v1_interface.name)) {
+		fscale_mgr = wl_registry_bind(reg, name, &wp_fractional_scale_manager_v1_interface, 1);
 	} else if (!strcmp(iface, wl_shm_interface.name)) {
 		shm = wl_registry_bind(reg, name, &wl_shm_interface, 1);
 	} else if (!strcmp(iface, wl_output_interface.name) && ver >= 4) {
