@@ -242,6 +242,28 @@ static bool should_float(struct win *w)
 	return false;
 }
 
+static int clamp_hint(int v, int min, int max)
+{
+	if (max > 0 && v > max)
+		v = max;
+	if (min > 0 && v < min)
+		v = min;
+	return v;
+}
+
+/* Dialog: połowa szerokości i wysokości rodzica (bez rodzica — monitora),
+ * w granicach min/max zgłoszonych przez okno. Stały rozmiar zostaje stały. */
+static void dialog_size(struct win *w, int *pw, int *ph)
+{
+	int bw = w->out->aw, bh = w->out->ah;
+	if (w->parent && visible(w->parent)) {
+		bw = w->parent->w;
+		bh = w->parent->h;
+	}
+	*pw = clamp_hint(bw / 2, w->min_w, w->max_w);
+	*ph = clamp_hint(bh / 2, w->min_h, w->max_h);
+}
+
 static void detach(struct win *w)
 {
 	bars_dirty = true;
@@ -723,8 +745,11 @@ static void wm_manage_start(void *d, struct river_window_manager_v1 *m)
 				w->pw = w->w;
 				w->ph = w->h;
 			}
-		} else if (w->float_pending == 1)                    /* dialog: niech sam wybierze */
-			river_window_v1_propose_dimensions(w->rw, 0, 0);
+		} else if (w->float_pending == 1) {                  /* dialog: pół na pół rodzica */
+			int pw, ph;
+			dialog_size(w, &pw, &ph);
+			river_window_v1_propose_dimensions(w->rw, pw, ph);
+		}
 		else if (w->float_pending == 2)                    /* Super+F: 60% obszaru */
 			river_window_v1_propose_dimensions(w->rw, w->out->aw * 3 / 5, w->out->ah * 3 / 5);
 		if (w->floating)
