@@ -134,10 +134,13 @@ struct sensors {
 	char bat_state;                 /* + ładuje, - rozładowuje, = pełna */
 	bool has_temp, has_bat;
 	bool lan, wifi, wg;
+	int vol;                        /* %, -1 = brak informacji */
+	bool muted;
 };
 
 extern struct sensors sens;
 void sensors_update(void);
+void sensors_update_vol(void);
 
 extern struct river_window_manager_v1 *wm;
 extern struct wl_compositor *compositor;

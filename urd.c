@@ -109,7 +109,7 @@ int urd_bar_height(void)
 static int draw_sensors(pixman_image_t *img, int right, int h, int min_x)
 {
 	const struct theme *t = THEME;
-	struct { char s[24]; uint32_t c; } it[8];
+	struct { char s[24]; uint32_t c; } it[10];
 	int n = 0;
 
 	if (sens.wg) {
@@ -125,6 +125,13 @@ static int draw_sensors(pixman_image_t *img, int right, int h, int min_x)
 	snprintf(it[n].s, sizeof it[n].s, "RAM %.1fG", sens.ram_gb);
 	it[n++].c = t->fg;
 
+	if (sens.vol >= 0) {
+		if (sens.muted)
+			snprintf(it[n].s, sizeof it[n].s, "VOL MUTE");
+		else
+			snprintf(it[n].s, sizeof it[n].s, "VOL %d%%", sens.vol);
+		it[n++].c = sens.muted ? t->warn : t->fg;
+	}
 	if (sens.has_temp) {
 		snprintf(it[n].s, sizeof it[n].s, "%d°C", sens.temp);
 		it[n++].c = sens.temp >= 90 ? t->alarm : sens.temp >= 80 ? t->warn : t->fg;

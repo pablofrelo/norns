@@ -155,8 +155,25 @@ static void update_net(void)
 	closedir(d);
 }
 
+/* PipeWire: "Volume: 0.45" albo "Volume: 0.45 [MUTED]" */
+void sensors_update_vol(void)
+{
+	sens.vol = -1;
+	FILE *p = popen("wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null", "r");
+	if (!p)
+		return;
+	char buf[64] = "";
+	float v;
+	if (fgets(buf, sizeof buf, p) && sscanf(buf, "Volume: %f", &v) == 1) {
+		sens.vol = (int)(v * 100 + 0.5f);
+		sens.muted = strstr(buf, "MUTED") != NULL;
+	}
+	pclose(p);
+}
+
 void sensors_update(void)
 {
+	sensors_update_vol();
 	update_cpu();
 	update_ram();
 	update_temp();

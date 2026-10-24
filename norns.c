@@ -11,6 +11,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/timerfd.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
@@ -50,9 +51,12 @@ int theme_idx;
 
 static const char *const browser[] = { "firefox", NULL };
 static const char *const files[] = { "dolphin", NULL };
+static const char *const vol_up[] = { "wpctl", "set-volume", "-l", "1.0", "@DEFAULT_AUDIO_SINK@", "5%+", NULL };
+static const char *const vol_down[] = { "wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-", NULL };
+static const char *const vol_mute[] = { "wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle", NULL };
 
 enum action { SPAWN, CLOSE, QUIT, VIEW, SEND_TAG, FOCUS_OUT, SEND_OUT, THEME_TOGGLE, FLOAT_TOGGLE,
-              ANIM_TOGGLE, FULLSCREEN_TOGGLE };
+              ANIM_TOGGLE, FULLSCREEN_TOGGLE, VOLUME };
 
 struct key {
 	uint32_t mods;
@@ -78,6 +82,9 @@ static const struct key keys[] = {
 	{ SUPER,        XKB_KEY_f,      FLOAT_TOGGLE, 0, NULL },
 	{ SUPER,        XKB_KEY_a,      ANIM_TOGGLE,  0, NULL },  /* efekty wł./wył. */
 	{ SUPER | CTRL, XKB_KEY_f,      FULLSCREEN_TOGGLE, 0, NULL },
+	{ 0, XKB_KEY_XF86AudioRaiseVolume, VOLUME, 0, vol_up },
+	{ 0, XKB_KEY_XF86AudioLowerVolume, VOLUME, 0, vol_down },
+	{ 0, XKB_KEY_XF86AudioMute,        VOLUME, 0, vol_mute },
 	{ SUPER,        XKB_KEY_comma,  FOCUS_OUT, -1, NULL },
 	{ SUPER,        XKB_KEY_period, FOCUS_OUT, +1, NULL },
 	{ SUPER | CTRL, XKB_KEY_comma,  SEND_OUT,  -1, NULL },
@@ -692,6 +699,22 @@ static void run(const struct key *k)
 			focused->tiled_dirty = true;
 			attach(focused, fo, tag);
 		}
+		break;
+	case VOLUME:
+		/* wpctl synchronicznie, żeby pasek od razu pokazał nową wartość.
+		 * waitpid na konkretny pid — samo wait() przy SIGCHLD=SIG_IGN
+		 * czekałoby na wszystkie dzieci, też na odpalone aplikacje. */
+		{
+			pid_t pid = fork();
+			if (pid == 0) {
+				execvp(k->cmd[0], (char *const *)k->cmd);
+				_exit(1);
+			}
+			if (pid > 0)
+				waitpid(pid, NULL, 0);
+		}
+		sensors_update_vol();
+		urd_redraw_bars();
 		break;
 	case FULLSCREEN_TOGGLE:
 		if (focused)
