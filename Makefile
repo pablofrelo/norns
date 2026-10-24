@@ -9,7 +9,7 @@ LDLIBS += $(shell pkg-config --libs wayland-client wayland-cursor fcft pixman-1)
 HDRS = $(PROTOS:%=protocol/%-client-protocol.h)
 SRCS = norns.c urd.c sensors.c shm.c anim.c deco.c $(PROTOS:%=protocol/%-protocol.c)
 
-norns: $(SRCS) $(HDRS) norns.h
+norns: $(SRCS) $(HDRS) norns.h config.h
 	$(CC) $(CFLAGS) -o $@ $(SRCS) $(LDLIBS)
 
 protocol/%-client-protocol.h: $(PROTO_DIR)/%.xml

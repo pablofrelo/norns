@@ -7,7 +7,6 @@
 #include <math.h>
 #include "norns.h"
 
-#define FLOAT_R 18
 
 enum { DECO_NONE, DECO_SHADOW, DECO_GLOW };
 

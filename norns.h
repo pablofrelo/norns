@@ -7,10 +7,9 @@
 #include "river-layer-shell-v1-client-protocol.h"
 #include "river-window-management-v1-client-protocol.h"
 #include "river-xkb-bindings-v1-client-protocol.h"
+#include "config.h"                 /* GAP, BORDER, czasy animacji */
 
 #define NTAGS 9
-#define GAP    12
-#define BORDER 2
 
 /* ---------- bufory (shm.c) ---------- */
 
@@ -177,3 +176,26 @@ void urd_render(struct output *o);   /* tylko w trakcie sekwencji render */
 void urd_redraw_bars(void);          /* poza sekwencjami: zegar i sensory */
 int urd_sky_frame(uint64_t now);     /* klatka żywej tapety; zwraca ms do następnej lub -1 */
 void urd_cursor(const char *name);   /* kształt kursora, gdy żaden klient nie ma wskaźnika */
+
+/* ---------- skróty i reguły (definicje w config.h) ---------- */
+
+enum action { SPAWN, CLOSE, QUIT, VIEW, SEND_TAG, FOCUS_OUT, SEND_OUT, THEME_TOGGLE, FLOAT_TOGGLE,
+              ANIM_TOGGLE, FULLSCREEN_TOGGLE, VOLUME, FOCUS_DIR, SWAP_DIR };
+enum { LEFT, DOWN, UP, RIGHT };
+
+struct key {
+	uint32_t mods;
+	uint32_t sym;
+	enum action act;
+	int arg;                        /* numer tagu / kierunek ±1 */
+	const char *const *cmd;
+};
+
+struct rule {
+	const char *app_id;
+	const char *output;             /* fragment opisu monitora */
+	int tag;                        /* 1–9, 0 = aktualnie widoczny */
+};
+
+#define NORNS_TYPES_DONE
+#include "config.h"                 /* tablice: tylko gdy zdefiniowano NORNS_MAIN */

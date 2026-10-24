@@ -7,9 +7,6 @@
 #include <time.h>
 #include "norns.h"
 
-#define SLIDE_MS 140
-#define MOVE_MS  120
-#define OPEN_MS  160
 
 bool anim_on = true;
 
