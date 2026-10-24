@@ -95,7 +95,13 @@ void anim_render_window(struct win *w, uint64_t now)
 	}
 
 	/* pozycja bazowa: cel z layoutu, ewentualnie w trakcie dojazdu */
-	if (vis) {
+	if (vis && w->dragging) {           /* łapane myszą: dokładnie pod kursorem */
+		w->bx = w->x + w->drag_dx;
+		w->by = w->y + w->drag_dy;
+		w->tx = w->x;
+		w->ty = w->y;
+		w->move_t0 = 0;
+	} else if (vis) {
 		if (!w->shown) {                /* pojawia się: bez dojazdu */
 			w->bx = w->x;
 			w->by = w->y;

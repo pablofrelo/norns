@@ -1,6 +1,8 @@
 // norns — BSP window manager for river (river-window-management-v1)
 #define _POSIX_C_SOURCE 200809L
 #include <fcntl.h>
+#include <limits.h>
+#include <linux/input-event-codes.h>
 #include <locale.h>
 #include <poll.h>
 #include <signal.h>
@@ -91,6 +93,7 @@ struct seat {
 	struct river_seat_v1 *rs;
 	struct river_layer_shell_seat_v1 *ls;
 	struct river_xkb_binding_v1 *binds[NKEYS];
+	struct river_pointer_binding_v1 *pbinds[2];   /* Super+lewy, Super+prawy */
 	bool binds_new;
 };
 
@@ -107,6 +110,22 @@ static bool focus_dirty, close_focused, bars_dirty = true, running = true;
 static bool anim_want;              /* po render: potrzebna kolejna klatka animacji */
 static int ptr_x, ptr_y;
 static bool ptr_known, warp;
+static struct win *hover;           /* okno pod kursorem (pointer_enter) */
+
+/* Przeciąganie myszą: Super+lewy przesuwa, Super+prawy zmienia rozmiar.
+ * Pływające — ruch i rozmiar; kafle — zamiana miejscami i proporcje podziału. */
+enum { OP_NONE, OP_MOVE, OP_RESIZE };
+static struct {
+	int start;                      /* czeka na manage: OP_MOVE / OP_RESIZE */
+	int kind;
+	bool released;
+	struct win *w;
+	int dx, dy;
+	int sx, sy, sw, sh;             /* geometria na starcie */
+	struct node *hsplit, *vsplit;   /* podziały, których granicę ciągniemy */
+	float hr0, vr0;
+	int hw, vh;                     /* rozmiar tych podziałów w pikselach */
+} op;
 
 /* ---------- BSP ---------- */
 
@@ -136,6 +155,7 @@ static void bsp_insert(struct node **root, struct win *w, struct win *near)
 	t->a = old;
 	t->b = leaf;
 	t->side_by_side = t->w >= t->h; /* tniemy dłuższy bok */
+	t->ratio = 0.5f;
 	leaf->parent = t;
 }
 
@@ -154,6 +174,7 @@ static struct node *bsp_remove(struct node **root, struct win *w)
 	p->a = sib->a;
 	p->b = sib->b;
 	p->side_by_side = sib->side_by_side;
+	p->ratio = sib->ratio;
 	if (p->win)
 		p->win->leaf = p;
 	else
@@ -172,11 +193,13 @@ static void layout(struct node *n, int x, int y, int w, int h)
 		n->win->w = w - 2 * in > 1 ? w - 2 * in : 1;
 		n->win->h = h - 2 * in > 1 ? h - 2 * in : 1;
 	} else if (n->side_by_side) {
-		layout(n->a, x, y, w / 2, h);
-		layout(n->b, x + w / 2, y, w - w / 2, h);
+		int aw = (int)(w * n->ratio);
+		layout(n->a, x, y, aw, h);
+		layout(n->b, x + aw, y, w - aw, h);
 	} else {
-		layout(n->a, x, y, w, h / 2);
-		layout(n->b, x, y + h / 2, w, h - h / 2);
+		int ah = (int)(h * n->ratio);
+		layout(n->a, x, y, w, ah);
+		layout(n->b, x, y + ah, w, h - ah);
 	}
 }
 
@@ -283,6 +306,156 @@ static void attach(struct win *w, struct output *o, int tag)
 	bars_dirty = true;
 	if (!w->floating)
 		bsp_insert(&o->roots[tag], w, near);
+}
+
+/* ---------- przeciąganie myszą ---------- */
+
+/* Podział, którego linia jest krawędzią okna: prawą/dolną (far) albo lewą/górną. */
+static struct node *edge_split(struct win *w, bool horiz, bool far)
+{
+	struct node *child = w->leaf;
+	for (struct node *p = child->parent; p; child = p, p = p->parent)
+		if (p->side_by_side == horiz && (p->a == child) == far)
+			return p;
+	return NULL;
+}
+
+static struct win *tile_at(int x, int y, struct win *skip)
+{
+	struct win *w;
+	wl_list_for_each(w, &windows, link) {
+		if (w == skip || !w->leaf || !visible(w))
+			continue;
+		struct node *n = w->leaf;
+		if (x >= n->x && x < n->x + n->w && y >= n->y && y < n->y + n->h)
+			return w;
+	}
+	return NULL;
+}
+
+/* Zamiana dwóch kafli miejscami — także między monitorami i tagami. */
+static void swap_wins(struct win *a, struct win *b)
+{
+	struct node *la = a->leaf, *lb = b->leaf;
+	la->win = b;
+	lb->win = a;
+	a->leaf = lb;
+	b->leaf = la;
+	struct output *o = a->out;
+	int tag = a->tag;
+	a->out = b->out;
+	a->tag = b->tag;
+	b->out = o;
+	b->tag = tag;
+	bars_dirty = true;
+}
+
+static float clamp_ratio(float r)
+{
+	return r < 0.1f ? 0.1f : r > 0.9f ? 0.9f : r;
+}
+
+static void set_dragging_all(struct output *o, bool on)
+{
+	struct win *w;
+	wl_list_for_each(w, &windows, link)
+		if (w->out == o && w->tag == o->tag)
+			w->dragging = on;
+}
+
+/* Wołane z manage, przed layoutem. */
+static void op_manage(void)
+{
+	if (wl_list_empty(&seats))
+		return;
+	struct seat *s = wl_container_of(seats.next, s, link);
+
+	if (op.start && !op.kind) {
+		int kind = op.start;
+		struct win *w = hover;
+		op.start = 0;
+		if (w && visible(w)) {
+			memset(&op, 0, sizeof op);
+			op.kind = kind;
+			op.w = w;
+			op.sx = w->x;
+			op.sy = w->y;
+			op.sw = w->dw > 0 ? w->dw : w->w;
+			op.sh = w->dh > 0 ? w->dh : w->h;
+			if (kind == OP_RESIZE && w->leaf) {
+				/* łapiemy krawędź bliższą kursorowi */
+				op.hsplit = edge_split(w, true, ptr_x >= w->x + w->w / 2);
+				op.vsplit = edge_split(w, false, ptr_y >= w->y + w->h / 2);
+				if (op.hsplit) {
+					op.hr0 = op.hsplit->ratio;
+					op.hw = op.hsplit->w;
+				}
+				if (op.vsplit) {
+					op.vr0 = op.vsplit->ratio;
+					op.vh = op.vsplit->h;
+				}
+				set_dragging_all(w->out, true);     /* sąsiedzi bez dojazdu, za kursorem */
+			} else {
+				w->dragging = true;
+			}
+			if (kind == OP_RESIZE && w->floating)
+				river_window_v1_inform_resize_start(w->rw);
+			set_focus(w);
+			river_seat_v1_op_start_pointer(s->rs);
+			urd_cursor(kind == OP_MOVE ? "grabbing" : "se-resize");
+		}
+	}
+	if (!op.kind)
+		return;
+
+	struct win *w = op.w;
+	if (w && op.kind == OP_MOVE) {
+		if (w->floating) {
+			w->x = op.sx + op.dx;
+			w->y = op.sy + op.dy;
+			w->placed = true;
+		} else {
+			w->drag_dx = op.dx;
+			w->drag_dy = op.dy;
+		}
+	} else if (w && w->floating) {
+		int nw = clamp_hint(op.sw + op.dx, w->min_w, w->max_w);
+		int nh = clamp_hint(op.sh + op.dy, w->min_h, w->max_h);
+		if (nw < 80)
+			nw = 80;
+		if (nh < 50)
+			nh = 50;
+		if (nw != w->pw || nh != w->ph) {
+			river_window_v1_propose_dimensions(w->rw, nw, nh);
+			w->pw = nw;
+			w->ph = nh;
+		}
+		w->placed = true;               /* lewy górny róg zostaje na miejscu */
+	} else if (w) {
+		if (op.hsplit && op.hw > 0)
+			op.hsplit->ratio = clamp_ratio(op.hr0 + (float)op.dx / op.hw);
+		if (op.vsplit && op.vh > 0)
+			op.vsplit->ratio = clamp_ratio(op.vr0 + (float)op.dy / op.vh);
+	}
+
+	if (!op.released)
+		return;
+	if (w && op.kind == OP_MOVE && !w->floating) {
+		struct win *t = tile_at(ptr_x, ptr_y, w);
+		w->drag_dx = w->drag_dy = 0;
+		if (t)
+			swap_wins(w, t);
+	}
+	if (w && op.kind == OP_RESIZE && w->floating)
+		river_window_v1_inform_resize_end(w->rw);
+	struct win *it;
+	wl_list_for_each(it, &windows, link)
+		it->dragging = false;
+	if (w && !w->floating)
+		w->tx = INT_MIN;                /* dojazd z miejsca upuszczenia do kafla */
+	river_seat_v1_op_end(s->rs);
+	urd_cursor("default");
+	memset(&op, 0, sizeof op);
 }
 
 static void center_pointer(struct output *o)
@@ -461,6 +634,13 @@ static void win_closed(void *data, struct river_window_v1 *rw)
 		if (o->parent == w)
 			o->parent = NULL;
 	bars_dirty = true;
+	if (hover == w)
+		hover = NULL;
+	if (op.w == w) {                    /* zamknięte w trakcie przeciągania */
+		op.w = NULL;
+		op.released = true;
+		river_window_manager_v1_manage_dirty(wm);
+	}
 	deco_fini(w);
 	river_node_v1_destroy(w->rn);
 	river_window_v1_destroy(rw);
@@ -624,6 +804,21 @@ static const struct river_xkb_binding_v1_listener bind_listener = {
 	.stop_repeat = bind_stop_repeat,
 };
 
+/* ---------- przyciski myszy z Super ---------- */
+
+static void pbind_pressed(void *data, struct river_pointer_binding_v1 *pb)
+{
+	if (!op.kind)
+		op.start = (int)(intptr_t)data;     /* okno ustalimy w manage, ze świeżą pozycją */
+}
+
+static void pbind_released(void *d, struct river_pointer_binding_v1 *pb) {}
+
+static const struct river_pointer_binding_v1_listener pbind_listener = {
+	.pressed = pbind_pressed,
+	.released = pbind_released,
+};
+
 /* ---------- river_seat_v1 ---------- */
 
 static void seat_removed(void *data, struct river_seat_v1 *rs)
@@ -631,6 +826,8 @@ static void seat_removed(void *data, struct river_seat_v1 *rs)
 	struct seat *s = data;
 	for (size_t i = 0; i < NKEYS; i++)
 		river_xkb_binding_v1_destroy(s->binds[i]);
+	for (int i = 0; i < 2; i++)
+		river_pointer_binding_v1_destroy(s->pbinds[i]);
 	if (s->ls)
 		river_layer_shell_seat_v1_destroy(s->ls);
 	river_seat_v1_destroy(rs);
@@ -641,6 +838,7 @@ static void seat_removed(void *data, struct river_seat_v1 *rs)
 /* focus-follows-mouse: najechanie = fokus */
 static void seat_pointer_enter(void *d, struct river_seat_v1 *rs, struct river_window_v1 *rw)
 {
+	hover = river_window_v1_get_user_data(rw);
 	set_focus(river_window_v1_get_user_data(rw));
 }
 
@@ -657,10 +855,21 @@ static void seat_pointer_position(void *d, struct river_seat_v1 *rs, int32_t x, 
 }
 
 static void seat_wl_seat(void *d, struct river_seat_v1 *rs, uint32_t name) {}
-static void seat_pointer_leave(void *d, struct river_seat_v1 *rs) {}
+static void seat_pointer_leave(void *d, struct river_seat_v1 *rs)
+{
+	hover = NULL;
+}
 static void seat_shell_surface_interaction(void *d, struct river_seat_v1 *rs, struct river_shell_surface_v1 *ss) {}
-static void seat_op_delta(void *d, struct river_seat_v1 *rs, int32_t dx, int32_t dy) {}
-static void seat_op_release(void *d, struct river_seat_v1 *rs) {}
+static void seat_op_delta(void *d, struct river_seat_v1 *rs, int32_t dx, int32_t dy)
+{
+	op.dx = dx;
+	op.dy = dy;
+}
+
+static void seat_op_release(void *d, struct river_seat_v1 *rs)
+{
+	op.released = true;
+}
 static void seat_op_delta_touch(void *d, struct river_seat_v1 *rs, int32_t t, int32_t dx, int32_t dy) {}
 static void seat_op_release_touch(void *d, struct river_seat_v1 *rs, int32_t t) {}
 static void seat_op_cancel_touch(void *d, struct river_seat_v1 *rs, int32_t t) {}
@@ -746,6 +955,8 @@ static void wm_manage_start(void *d, struct river_window_manager_v1 *m)
 		river_window_v1_close(focused->rw);
 	close_focused = false;
 
+	op_manage();
+
 	/* fokus na niewidocznym oknie (np. wysłanym na inny tag) -> coś widocznego */
 	if (act && (!focused || !visible(focused)))
 		set_focus(first_on(act));
@@ -802,6 +1013,8 @@ static void wm_manage_start(void *d, struct river_window_manager_v1 *m)
 		if (s->binds_new) {
 			for (size_t i = 0; i < NKEYS; i++)
 				river_xkb_binding_v1_enable(s->binds[i]);
+			for (int i = 0; i < 2; i++)
+				river_pointer_binding_v1_enable(s->pbinds[i]);
 			s->binds_new = false;
 		}
 		if (focus_dirty) {
@@ -823,7 +1036,7 @@ static void wm_render_start(void *d, struct river_window_manager_v1 *m)
 	uint64_t now = now_ms();
 	struct win *w;
 	wl_list_for_each(w, &windows, link) {
-		if (visible(w) && w->floating) {
+		if (visible(w) && w->floating && !w->placed) {
 			/* wyśrodkuj nad rodzicem (jeśli widoczny), inaczej nad obszarem monitora */
 			int ax = w->out->ax, ay = w->out->ay, aw = w->out->aw, ah = w->out->ah;
 			if (w->parent && visible(w->parent)) {
@@ -837,13 +1050,17 @@ static void wm_render_start(void *d, struct river_window_manager_v1 *m)
 			w->x = ax + (aw - w->w) / 2;
 			w->y = ay + (ah - w->h) / 2;
 		}
+		if (visible(w) && w->floating && w->placed) {
+			w->w = w->dw;
+			w->h = w->dh;
+		}
 		if (visible(w))
 			deco_render(w);             /* przed anim: margines poświaty wchodzi w przycięcie */
 		anim_render_window(w, now);
 		if (!w->shown)
 			continue;
 		uint32_t c = w == focused ? THEME->focus : THEME->unfocus;
-		if (w->floating)
+		if (w->floating || (w == op.w && op.kind == OP_MOVE))
 			river_node_v1_place_top(w->rn);    /* nad kafelkami (pasek i tak wyżej) */
 		river_window_v1_set_borders(w->rw, RIVER_WINDOW_V1_EDGES_TOP | RIVER_WINDOW_V1_EDGES_BOTTOM |
 		                                   RIVER_WINDOW_V1_EDGES_LEFT | RIVER_WINDOW_V1_EDGES_RIGHT,
@@ -898,6 +1115,12 @@ static void wm_seat(void *d, struct river_window_manager_v1 *m, struct river_sea
 	for (size_t i = 0; i < NKEYS; i++) {
 		s->binds[i] = river_xkb_bindings_v1_get_xkb_binding(xkb, rs, keys[i].sym, keys[i].mods);
 		river_xkb_binding_v1_add_listener(s->binds[i], &bind_listener, (void *)&keys[i]);
+	}
+	const uint32_t buttons[2] = { BTN_LEFT, BTN_RIGHT };
+	for (int i = 0; i < 2; i++) {
+		s->pbinds[i] = river_seat_v1_get_pointer_binding(rs, buttons[i], SUPER);
+		river_pointer_binding_v1_add_listener(s->pbinds[i], &pbind_listener,
+		                                      (void *)(intptr_t)(i == 0 ? OP_MOVE : OP_RESIZE));
 	}
 	s->binds_new = true;                      /* enable dopiero w manage */
 	wl_list_insert(&seats, &s->link);

@@ -19,6 +19,7 @@ static struct fcft_font *fonts[2];  /* po jednym na motyw */
 static struct wl_pointer *pointer;
 static struct wl_surface *ptr_surf, *cursor_surf;
 static struct wl_cursor_image *cursor_img;
+static struct wl_cursor_theme *cursor_theme;
 static int ptr_x;
 
 /* ---------- rysowanie ---------- */
@@ -605,6 +606,24 @@ void urd_bind_seat(struct wl_registry *reg, uint32_t name)
 	wl_seat_add_listener(seat, &seat_listener, NULL);
 }
 
+/* Od wersji 4 protokołu kursor ustawiony przez WM obowiązuje, gdy żaden klient
+ * nie ma wskaźnika (np. przy przeciąganiu), a serial jest ignorowany. */
+void urd_cursor(const char *name)
+{
+	if (!pointer || !cursor_theme)
+		return;
+	struct wl_cursor *c = wl_cursor_theme_get_cursor(cursor_theme, name);
+	if (!c)
+		c = wl_cursor_theme_get_cursor(cursor_theme, "default");
+	if (!c)
+		return;
+	cursor_img = c->images[0];
+	wl_surface_attach(cursor_surf, wl_cursor_image_get_buffer(cursor_img), 0, 0);
+	wl_surface_damage_buffer(cursor_surf, 0, 0, cursor_img->width, cursor_img->height);
+	wl_surface_commit(cursor_surf);
+	wl_pointer_set_cursor(pointer, 0, cursor_surf, cursor_img->hotspot_x, cursor_img->hotspot_y);
+}
+
 /* ---------- start ---------- */
 
 bool urd_init(void)
@@ -621,6 +640,7 @@ bool urd_init(void)
 
 	const char *size = getenv("XCURSOR_SIZE");
 	struct wl_cursor_theme *ct = wl_cursor_theme_load(getenv("XCURSOR_THEME"), size ? atoi(size) : 24, shm);
+	cursor_theme = ct;
 	struct wl_cursor *c = ct ? wl_cursor_theme_get_cursor(ct, "default") : NULL;
 	if (ct && !c)
 		c = wl_cursor_theme_get_cursor(ct, "left_ptr");

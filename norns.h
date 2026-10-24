@@ -50,6 +50,7 @@ struct node {                       /* węzeł drzewa BSP */
 	struct node *parent, *a, *b;    /* a/b tylko w węzłach wewnętrznych */
 	struct win *win;                /* tylko w liściach */
 	bool side_by_side;              /* podział pionową kreską (a | b) */
+	float ratio;                    /* ile miejsca dostaje a (0.1–0.9) */
 	int x, y, w, h;                 /* kafel z ostatniego layoutu */
 };
 
@@ -96,6 +97,9 @@ struct win {
 	int dw, dh;                     /* rzeczywisty rozmiar (event dimensions) */
 	int pw, ph;                     /* ostatnio zaproponowany rozmiar */
 	int x, y, w, h;                 /* treść okna (bez ramki) — cel z layoutu */
+	bool placed;                    /* pływające przesunięte ręcznie — bez centrowania */
+	bool dragging;                  /* łapane myszą: bez animacji dojazdu */
+	int drag_dx, drag_dy;           /* kafel niesiony za kursorem */
 
 	/* animacja (anim.c) */
 	bool shown, ever_shown, clip_on;
@@ -162,3 +166,4 @@ void urd_output_fini(struct output *o);
 void urd_render(struct output *o);   /* tylko w trakcie sekwencji render */
 void urd_redraw_bars(void);          /* poza sekwencjami: zegar i sensory */
 int urd_sky_frame(uint64_t now);     /* klatka żywej tapety; zwraca ms do następnej lub -1 */
+void urd_cursor(const char *name);   /* kształt kursora, gdy żaden klient nie ma wskaźnika */
