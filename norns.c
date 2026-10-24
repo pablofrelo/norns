@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/timerfd.h>
 #include <time.h>
 #include <unistd.h>
@@ -321,6 +322,55 @@ void view_tag(struct output *o, int tag)
 	river_window_manager_v1_manage_dirty(wm);   /* z paska nie ma manage w drodze */
 }
 
+/* $XDG_x_HOME/norns/<name>, z domyślnym ~/<fallback> gdy zmienna pusta. */
+static void xdg_path(char *buf, size_t n, const char *var, const char *fallback, const char *name)
+{
+	const char *base = getenv(var), *home = getenv("HOME");
+	if (base && *base)
+		snprintf(buf, n, "%s/norns/%s", base, name);
+	else
+		snprintf(buf, n, "%s/%s/norns/%s", home ? home : "", fallback, name);
+}
+
+/* Skrypt użytkownika dla aplikacji (foot itd.): ~/.config/norns/theme <nazwa>. */
+static void run_theme_script(void)
+{
+	char path[512];
+	xdg_path(path, sizeof path, "XDG_CONFIG_HOME", ".config", "theme");
+	if (access(path, X_OK) == 0)
+		spawn((const char *const[]){ path, THEME->name, NULL });
+}
+
+/* Wybrany motyw przeżywa restart: ~/.local/state/norns/theme. */
+static void save_theme(void)
+{
+	char path[512];
+	xdg_path(path, sizeof path, "XDG_STATE_HOME", ".local/state", "theme");
+	char *slash = strrchr(path, '/');
+	*slash = 0;
+	mkdir(path, 0755);              /* ~/.local/state musi już istnieć — tworzymy tylko norns/ */
+	*slash = '/';
+	FILE *f = fopen(path, "w");
+	if (f) {
+		fprintf(f, "%s\n", THEME->name);
+		fclose(f);
+	}
+}
+
+static void load_theme(void)
+{
+	char path[512], name[32] = "";
+	xdg_path(path, sizeof path, "XDG_STATE_HOME", ".local/state", "theme");
+	FILE *f = fopen(path, "r");
+	if (!f)
+		return;
+	if (fscanf(f, "%31s", name) == 1)
+		for (int i = 0; i < 2; i++)
+			if (!strcmp(name, themes[i].name))
+				theme_idx = i;
+	fclose(f);
+}
+
 /* Przełącza motyw: ramki, pasek, tapeta, plus skrypt użytkownika dla aplikacji. */
 void toggle_theme(void)
 {
@@ -329,16 +379,8 @@ void toggle_theme(void)
 	struct output *o;
 	wl_list_for_each(o, &outputs, link)
 		o->wall.dirty = true;
-
-	char path[512];
-	const char *cfg = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
-	if (cfg && *cfg)
-		snprintf(path, sizeof path, "%s/norns/theme", cfg);
-	else
-		snprintf(path, sizeof path, "%s/.config/norns/theme", home ? home : "");
-	if (access(path, X_OK) == 0)
-		spawn((const char *const[]){ path, THEME->name, NULL });
-
+	save_theme();
+	run_theme_script();
 	river_window_manager_v1_manage_dirty(wm);
 }
 
@@ -933,8 +975,10 @@ int main(void)
 		fprintf(stderr, "norns: brak river_window_manager_v1 / river_xkb_bindings_v1 (to nie river?)\n");
 		return 1;
 	}
+	load_theme();
 	if (!urd_init())
 		return 1;
+	run_theme_script();         /* otwarte foote dostają paletę zapamiętanego motywu */
 
 	/* xkb i layer shell przed wm: eventy output/seat od razu ich używają */
 	xkb = wl_registry_bind(reg, xkb_name, &river_xkb_bindings_v1_interface, xkb_ver);
