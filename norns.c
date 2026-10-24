@@ -239,12 +239,23 @@ static int clamp_hint(int v, int min, int max)
 static void dialog_size(struct win *w, int *pw, int *ph)
 {
 	int bw = w->out->aw, bh = w->out->ah;
-	if (w->parent && visible(w->parent)) {
-		bw = w->parent->w;
-		bh = w->parent->h;
+	/* od pierwszego zwykłego okna w łańcuchu — dialog dialogu (np. wybór
+	 * miejsca zapisu otwarty z okienka „zapisz/otwórz”) nie może skurczyć się
+	 * do połowy małego okienka */
+	struct win *p = w->parent;
+	for (int i = 0; p && p->floating && i < 8; i++)
+		p = p->parent;
+	if (p && visible(p)) {
+		bw = p->w;
+		bh = p->h;
 	}
-	*pw = clamp_hint(bw / 2, w->min_w, w->max_w);
-	*ph = clamp_hint(bh / 2, w->min_h, w->max_h);
+	int dw = bw / 2 > 480 ? bw / 2 : 480, dh = bh / 2 > 360 ? bh / 2 : 360;
+	if (dw > w->out->aw)
+		dw = w->out->aw;
+	if (dh > w->out->ah)
+		dh = w->out->ah;
+	*pw = clamp_hint(dw, w->min_w, w->max_w);
+	*ph = clamp_hint(dh, w->min_h, w->max_h);
 }
 
 static void detach(struct win *w)
@@ -1073,6 +1084,11 @@ static void wm_manage_start(void *d, struct river_window_manager_v1 *m)
 		}
 		attach(w, to, tag);
 		if (w->fresh) {
+			/* do /tmp/norns.log: przydatne przy pisaniu reguł i szukaniu zgubionych okien */
+			fprintf(stderr, "norns: nowe okno app_id=%s rodzic=%s %s, min %dx%d max %dx%d\n",
+			        w->app_id ? w->app_id : "?",
+			        w->parent && w->parent->app_id ? w->parent->app_id : "-",
+			        w->floating ? "pływa" : "kafel", w->min_w, w->min_h, w->max_w, w->max_h);
 			w->fresh = false;
 			river_window_v1_use_ssd(w->rw);
 			set_focus(w);
