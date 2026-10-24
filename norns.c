@@ -56,7 +56,8 @@ static const char *const vol_down[] = { "wpctl", "set-volume", "@DEFAULT_AUDIO_S
 static const char *const vol_mute[] = { "wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle", NULL };
 
 enum action { SPAWN, CLOSE, QUIT, VIEW, SEND_TAG, FOCUS_OUT, SEND_OUT, THEME_TOGGLE, FLOAT_TOGGLE,
-              ANIM_TOGGLE, FULLSCREEN_TOGGLE, VOLUME };
+              ANIM_TOGGLE, FULLSCREEN_TOGGLE, VOLUME, FOCUS_DIR, SWAP_DIR };
+enum { LEFT, DOWN, UP, RIGHT };
 
 struct key {
 	uint32_t mods;
@@ -82,6 +83,14 @@ static const struct key keys[] = {
 	{ SUPER,        XKB_KEY_f,      FLOAT_TOGGLE, 0, NULL },
 	{ SUPER,        XKB_KEY_a,      ANIM_TOGGLE,  0, NULL },  /* efekty wł./wył. */
 	{ SUPER | CTRL, XKB_KEY_f,      FULLSCREEN_TOGGLE, 0, NULL },
+	{ SUPER,        XKB_KEY_h,      FOCUS_DIR, LEFT,  NULL },
+	{ SUPER,        XKB_KEY_j,      FOCUS_DIR, DOWN,  NULL },
+	{ SUPER,        XKB_KEY_k,      FOCUS_DIR, UP,    NULL },
+	{ SUPER,        XKB_KEY_l,      FOCUS_DIR, RIGHT, NULL },
+	{ SUPER | CTRL, XKB_KEY_h,      SWAP_DIR,  LEFT,  NULL },
+	{ SUPER | CTRL, XKB_KEY_j,      SWAP_DIR,  DOWN,  NULL },
+	{ SUPER | CTRL, XKB_KEY_k,      SWAP_DIR,  UP,    NULL },
+	{ SUPER | CTRL, XKB_KEY_l,      SWAP_DIR,  RIGHT, NULL },
 	{ 0, XKB_KEY_XF86AudioRaiseVolume, VOLUME, 0, vol_up },
 	{ 0, XKB_KEY_XF86AudioLowerVolume, VOLUME, 0, vol_down },
 	{ 0, XKB_KEY_XF86AudioMute,        VOLUME, 0, vol_mute },
@@ -132,6 +141,7 @@ static bool focus_dirty, close_focused, bars_dirty = true, running = true;
 static bool anim_want;              /* po render: potrzebna kolejna klatka animacji */
 static int ptr_x, ptr_y;
 static bool ptr_known, warp;
+static bool warp_focus;             /* po layoucie: kursor na środek okna z fokusem (FFM go nie odbierze) */
 
 /* Opisy monitorów z wl_output: "AOC Q27G42XNE 1O0R9HA001780 (DP-9)". */
 struct wlout {
@@ -548,6 +558,48 @@ static void op_manage(void)
 	memset(&op, 0, sizeof op);
 }
 
+/* ---------- kierunki: Super+H/J/K/L ---------- */
+
+static void win_rect(struct win *w, int *x, int *y, int *ww, int *wh)
+{
+	*x = w->x;
+	*y = w->y;
+	*ww = w->dw > 0 ? w->dw : w->w;
+	*wh = w->dh > 0 ? w->dh : w->h;
+}
+
+/* Najbliższe widoczne okno w danym kierunku, na dowolnym monitorze:
+ * jego środek musi leżeć za krawędzią okna z fokusem; wygrywa najmniejsza
+ * odległość wzdłuż kierunku plus podwojone przesunięcie w poprzek. */
+static struct win *dir_neighbor(struct win *from, int dir, bool tiles_only)
+{
+	int fx, fy, fw, fh;
+	win_rect(from, &fx, &fy, &fw, &fh);
+	int fcx = fx + fw / 2, fcy = fy + fh / 2;
+	struct win *best = NULL, *w;
+	long best_d = 0;
+	wl_list_for_each(w, &windows, link) {
+		if (w == from || !visible(w) || (tiles_only && !w->leaf))
+			continue;
+		int x, y, ww, wh;
+		win_rect(w, &x, &y, &ww, &wh);
+		int cx = x + ww / 2, cy = y + wh / 2;
+		long along, across;
+		switch (dir) {
+		case LEFT:  if (cx >= fx) continue;      along = fx - cx;      across = cy - fcy; break;
+		case RIGHT: if (cx <= fx + fw) continue; along = cx - fx - fw; across = cy - fcy; break;
+		case UP:    if (cy >= fy) continue;      along = fy - cy;      across = cx - fcx; break;
+		default:    if (cy <= fy + fh) continue; along = cy - fy - fh; across = cx - fcx; break;
+		}
+		long d = along + 2 * (across < 0 ? -across : across);
+		if (!best || d < best_d) {
+			best = w;
+			best_d = d;
+		}
+	}
+	return best;
+}
+
 static void center_pointer(struct output *o)
 {
 	ptr_x = o->x + o->w / 2;
@@ -662,6 +714,7 @@ void toggle_theme(void)
 static void run(const struct key *k)
 {
 	struct output *o = active_output(), *n;
+	struct win *n_w;
 
 	switch (k->act) {
 	case SPAWN:
@@ -709,6 +762,22 @@ static void run(const struct key *k)
 			focused->pw = focused->ph = -1;     /* kafelek dostanie rozmiar od nowa */
 			focused->tiled_dirty = true;
 			attach(focused, fo, tag);
+		}
+		break;
+	case FOCUS_DIR:
+		if (!focused || !visible(focused)) {
+			if (o)
+				set_focus(first_on(o));
+		} else if ((n_w = dir_neighbor(focused, k->arg, false))) {
+			set_focus(n_w);
+			warp_focus = true;
+		}
+		break;
+	case SWAP_DIR:
+		if (focused && focused->leaf && visible(focused) && (n_w = dir_neighbor(focused, k->arg, true))) {
+			swap_wins(focused, n_w);
+			focused->tx = INT_MIN;          /* dojazd na nowe miejsce */
+			warp_focus = true;
 		}
 		break;
 	case VOLUME:
@@ -1183,6 +1252,13 @@ static void wm_manage_start(void *d, struct river_window_manager_v1 *m)
 			layout(r, o->ax + GAP / 2, o->ay + GAP / 2, o->aw - GAP, o->ah - GAP);
 	}
 	bars_dirty = false;
+	if (warp_focus && focused && visible(focused)) {
+		ptr_x = focused->x + focused->w / 2;
+		ptr_y = focused->y + focused->h / 2;
+		ptr_known = warp = true;
+	}
+	warp_focus = false;
+
 	wl_list_for_each(w, &windows, link) {
 		if (!visible(w))
 			continue;
