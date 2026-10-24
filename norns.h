@@ -99,6 +99,9 @@ struct win {
 	int pw, ph;                     /* ostatnio zaproponowany rozmiar */
 	int x, y, w, h;                 /* treść okna (bez ramki) — cel z layoutu */
 	bool placed;                    /* pływające przesunięte ręcznie — bez centrowania */
+	bool fullscreen;                /* pełny ekran (kafel w drzewie zostaje) */
+	int fs_want;                    /* 0 nic, 1 wejdź, 2 wyjdź — wykonywane w manage */
+	struct output *fs_out;          /* monitor, o który prosiło okno */
 	bool dragging;                  /* łapane myszą: bez animacji dojazdu */
 	int drag_dx, drag_dy;           /* kafel niesiony za kursorem */
 

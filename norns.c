@@ -52,7 +52,7 @@ static const char *const browser[] = { "firefox", NULL };
 static const char *const files[] = { "dolphin", NULL };
 
 enum action { SPAWN, CLOSE, QUIT, VIEW, SEND_TAG, FOCUS_OUT, SEND_OUT, THEME_TOGGLE, FLOAT_TOGGLE,
-              ANIM_TOGGLE };
+              ANIM_TOGGLE, FULLSCREEN_TOGGLE };
 
 struct key {
 	uint32_t mods;
@@ -77,6 +77,7 @@ static const struct key keys[] = {
 	{ SUPER,        XKB_KEY_t,      THEME_TOGGLE, 0, NULL },
 	{ SUPER,        XKB_KEY_f,      FLOAT_TOGGLE, 0, NULL },
 	{ SUPER,        XKB_KEY_a,      ANIM_TOGGLE,  0, NULL },  /* efekty wł./wył. */
+	{ SUPER | CTRL, XKB_KEY_f,      FULLSCREEN_TOGGLE, 0, NULL },
 	{ SUPER,        XKB_KEY_comma,  FOCUS_OUT, -1, NULL },
 	{ SUPER,        XKB_KEY_period, FOCUS_OUT, +1, NULL },
 	{ SUPER | CTRL, XKB_KEY_comma,  SEND_OUT,  -1, NULL },
@@ -692,6 +693,10 @@ static void run(const struct key *k)
 			attach(focused, fo, tag);
 		}
 		break;
+	case FULLSCREEN_TOGGLE:
+		if (focused)
+			focused->fs_want = focused->fullscreen ? 2 : 1;
+		break;
 	case ANIM_TOGGLE:
 		anim_on = !anim_on;
 		river_window_manager_v1_manage_dirty(wm);
@@ -778,8 +783,18 @@ static void win_pointer_resize_requested(void *d, struct river_window_v1 *rw, st
 static void win_show_window_menu_requested(void *d, struct river_window_v1 *rw, int32_t x, int32_t y) {}
 static void win_maximize_requested(void *d, struct river_window_v1 *rw) {}
 static void win_unmaximize_requested(void *d, struct river_window_v1 *rw) {}
-static void win_fullscreen_requested(void *d, struct river_window_v1 *rw, struct river_output_v1 *o) {}
-static void win_exit_fullscreen_requested(void *d, struct river_window_v1 *rw) {}
+static void win_fullscreen_requested(void *data, struct river_window_v1 *rw, struct river_output_v1 *o)
+{
+	struct win *w = data;
+	w->fs_want = 1;
+	w->fs_out = o ? river_output_v1_get_user_data(o) : NULL;
+}
+
+static void win_exit_fullscreen_requested(void *data, struct river_window_v1 *rw)
+{
+	struct win *w = data;
+	w->fs_want = 2;
+}
 static void win_minimize_requested(void *d, struct river_window_v1 *rw) {}
 static void win_unreliable_pid(void *d, struct river_window_v1 *rw, int32_t pid) {}
 static void win_presentation_hint(void *d, struct river_window_v1 *rw, uint32_t h) {}
@@ -1076,6 +1091,32 @@ static void wm_manage_start(void *d, struct river_window_manager_v1 *m)
 
 	op_manage();
 
+	/* pełny ekran: river sam ustawia rozmiar i pozycję; po wyjściu wracamy do kafla */
+	wl_list_for_each(w, &windows, link) {
+		if (!w->fs_want || !w->out)
+			continue;
+		if (w->fs_want == 1 && !w->fullscreen) {
+			struct output *fo = w->fs_out ? w->fs_out : w->out;
+			if (fo != w->out) {             /* aplikacja chce inny monitor — przenosimy okno */
+				detach(w);
+				attach(w, fo, fo->tag);
+			}
+			river_window_v1_fullscreen(w->rw, fo->ro);
+			river_window_v1_inform_fullscreen(w->rw);
+			w->fullscreen = true;
+			set_focus(w);
+		} else if (w->fs_want == 2 && w->fullscreen) {
+			river_window_v1_exit_fullscreen(w->rw);
+			river_window_v1_inform_not_fullscreen(w->rw);
+			w->fullscreen = false;
+			w->pw = w->ph = -1;             /* propose w tej samej sekwencji (frame perfect) */
+			if (w->floating && w->w > 0)
+				river_window_v1_propose_dimensions(w->rw, w->w, w->h);
+		}
+		w->fs_want = 0;
+		w->fs_out = NULL;
+	}
+
 	/* fokus na niewidocznym oknie (np. wysłanym na inny tag) -> coś widocznego */
 	if (act && (!focused || !visible(focused)))
 		set_focus(first_on(act));
@@ -1192,6 +1233,14 @@ static void wm_render_start(void *d, struct river_window_manager_v1 *m)
 	struct output *o;
 	wl_list_for_each(o, &outputs, link)
 		urd_render(o);
+
+	/* pełny ekran nad paskiem (urd kładzie pasek na wierzch) */
+	wl_list_for_each(w, &windows, link)
+		if (w->fullscreen && visible(w))
+			river_node_v1_place_top(w->rn);
+	wl_list_for_each(w, &windows, link)     /* dialogi okna pełnoekranowego nad nim */
+		if (w->floating && w->parent && w->parent->fullscreen && visible(w))
+			river_node_v1_place_top(w->rn);
 
 	anim_want = anim_busy(now);
 	river_window_manager_v1_render_finish(wm);
