@@ -24,3 +24,6 @@ clean:
 	rm -rf norns protocol
 
 .PHONY: clean
+
+install: norns
+	install -Dm755 norns $(HOME)/.local/bin/norns
