@@ -15,8 +15,6 @@
 
 /* ---------- config ---------- */
 
-#define GAP    8
-#define BORDER 2
 #define C8(x)  ((uint32_t)((x) & 0xff) * 0x01010101u)   /* 8-bit -> 32-bit kanał koloru */
 
 /* Font i paleta foota ustalane są przy starcie okna — stąd osobna komenda na motyw. */
@@ -50,7 +48,8 @@ int theme_idx;
 static const char *const browser[] = { "firefox", NULL };
 static const char *const files[] = { "dolphin", NULL };
 
-enum action { SPAWN, CLOSE, QUIT, VIEW, SEND_TAG, FOCUS_OUT, SEND_OUT, THEME_TOGGLE, FLOAT_TOGGLE };
+enum action { SPAWN, CLOSE, QUIT, VIEW, SEND_TAG, FOCUS_OUT, SEND_OUT, THEME_TOGGLE, FLOAT_TOGGLE,
+              ANIM_TOGGLE };
 
 struct key {
 	uint32_t mods;
@@ -74,6 +73,7 @@ static const struct key keys[] = {
 	{ SUPER,        XKB_KEY_Escape, QUIT,      0, NULL },  /* wyjście z norns, nie z rivera */
 	{ SUPER,        XKB_KEY_t,      THEME_TOGGLE, 0, NULL },
 	{ SUPER,        XKB_KEY_f,      FLOAT_TOGGLE, 0, NULL },
+	{ SUPER,        XKB_KEY_a,      ANIM_TOGGLE,  0, NULL },  /* efekty wł./wył. */
 	{ SUPER,        XKB_KEY_comma,  FOCUS_OUT, -1, NULL },
 	{ SUPER,        XKB_KEY_period, FOCUS_OUT, +1, NULL },
 	{ SUPER | CTRL, XKB_KEY_comma,  SEND_OUT,  -1, NULL },
@@ -102,7 +102,8 @@ static struct river_layer_shell_v1 *layer_shell;
 struct wl_list windows, outputs;
 static struct wl_list seats;
 struct win *focused;
-static bool focus_dirty, close_focused, running = true;
+static bool focus_dirty, close_focused, bars_dirty = true, running = true;
+static bool anim_want;              /* po render: potrzebna kolejna klatka animacji */
 static int ptr_x, ptr_y;
 static bool ptr_known, warp;
 
@@ -184,13 +185,13 @@ static void set_focus(struct win *w)
 {
 	if (focused != w) {
 		focused = w;
-		focus_dirty = true;
+		focus_dirty = bars_dirty = true;   /* tytuł na pasku */
 	}
 }
 
 static bool visible(struct win *w)
 {
-	return w->out && w->tag == w->out->tag;
+	return win_visible(w);
 }
 
 static struct win *first_on(struct output *o)
@@ -243,6 +244,7 @@ static bool should_float(struct win *w)
 
 static void detach(struct win *w)
 {
+	bars_dirty = true;
 	if (w->leaf)
 		bsp_remove(&w->out->roots[w->tag], w);
 	w->out = NULL;
@@ -255,6 +257,7 @@ static void attach(struct win *w, struct output *o, int tag)
 	                   focused->tag == tag && focused->leaf ? focused : NULL;
 	w->out = o;
 	w->tag = tag;
+	bars_dirty = true;
 	if (!w->floating)
 		bsp_insert(&o->roots[tag], w, near);
 }
@@ -289,7 +292,9 @@ void view_tag(struct output *o, int tag)
 {
 	if (o->tag == tag)
 		return;
+	anim_tag_switch(o, o->tag, tag);
 	o->tag = tag;
+	bars_dirty = true;
 	set_focus(first_on(o));
 	river_window_manager_v1_manage_dirty(wm);   /* z paska nie ma manage w drodze */
 }
@@ -298,6 +303,7 @@ void view_tag(struct output *o, int tag)
 void toggle_theme(void)
 {
 	theme_idx = !theme_idx;
+	bars_dirty = true;
 	struct output *o;
 	wl_list_for_each(o, &outputs, link)
 		o->wall.dirty = true;
@@ -362,9 +368,14 @@ static void run(const struct key *k)
 			detach(focused);
 			focused->floating = !focused->floating;
 			focused->float_pending = focused->floating ? 2 : 0;
+			focused->pw = focused->ph = -1;     /* kafelek dostanie rozmiar od nowa */
 			focused->tiled_dirty = true;
 			attach(focused, fo, tag);
 		}
+		break;
+	case ANIM_TOGGLE:
+		anim_on = !anim_on;
+		river_window_manager_v1_manage_dirty(wm);
 		break;
 	}
 }
@@ -385,6 +396,8 @@ static void win_closed(void *data, struct river_window_v1 *rw)
 	wl_list_for_each(o, &windows, link)
 		if (o->parent == w)
 			o->parent = NULL;
+	bars_dirty = true;
+	deco_fini(w);
 	river_node_v1_destroy(w->rn);
 	river_window_v1_destroy(rw);
 	wl_list_remove(&w->link);
@@ -398,6 +411,10 @@ static void win_title(void *data, struct river_window_v1 *rw, const char *title)
 	struct win *w = data;
 	free(w->title);
 	w->title = title ? strdup(title) : NULL;
+	if (w == focused) {
+		bars_dirty = true;
+		river_window_manager_v1_manage_dirty(wm);   /* przerysuj tytuł na pasku */
+	}
 }
 
 static void win_dimensions_hint(void *data, struct river_window_v1 *rw,
@@ -680,7 +697,8 @@ static void wm_manage_start(void *d, struct river_window_manager_v1 *m)
 		o->bar.y = ay;
 		o->bar.w = aw;
 		o->bar.h = bh;
-		o->bar.dirty = true;            /* pasek tani — rysujemy po każdym manage */
+		if (bars_dirty)
+			o->bar.dirty = true;
 		o->wall.x = o->x;
 		o->wall.y = o->y;
 		o->wall.w = o->w;
@@ -695,12 +713,17 @@ static void wm_manage_start(void *d, struct river_window_manager_v1 *m)
 		if (r)
 			layout(r, o->ax + GAP / 2, o->ay + GAP / 2, o->aw - GAP, o->ah - GAP);
 	}
+	bars_dirty = false;
 	wl_list_for_each(w, &windows, link) {
 		if (!visible(w))
 			continue;
-		if (!w->floating)
-			river_window_v1_propose_dimensions(w->rw, w->w, w->h);
-		else if (w->float_pending == 1)                    /* dialog: niech sam wybierze */
+		if (!w->floating) {
+			if (w->w != w->pw || w->h != w->ph) {  /* każdy propose to reconfigure okna */
+				river_window_v1_propose_dimensions(w->rw, w->w, w->h);
+				w->pw = w->w;
+				w->ph = w->h;
+			}
+		} else if (w->float_pending == 1)                    /* dialog: niech sam wybierze */
 			river_window_v1_propose_dimensions(w->rw, 0, 0);
 		else if (w->float_pending == 2)                    /* Super+F: 60% obszaru */
 			river_window_v1_propose_dimensions(w->rw, w->out->aw * 3 / 5, w->out->ah * 3 / 5);
@@ -730,13 +753,10 @@ static void wm_manage_start(void *d, struct river_window_manager_v1 *m)
 
 static void wm_render_start(void *d, struct river_window_manager_v1 *m)
 {
+	uint64_t now = now_ms();
 	struct win *w;
 	wl_list_for_each(w, &windows, link) {
-		if (!visible(w)) {
-			river_window_v1_hide(w->rw);
-			continue;
-		}
-		if (w->floating) {
+		if (visible(w) && w->floating) {
 			/* wyśrodkuj nad rodzicem (jeśli widoczny), inaczej nad obszarem monitora */
 			int ax = w->out->ax, ay = w->out->ay, aw = w->out->aw, ah = w->out->ah;
 			if (w->parent && visible(w->parent)) {
@@ -750,9 +770,12 @@ static void wm_render_start(void *d, struct river_window_manager_v1 *m)
 			w->x = ax + (aw - w->w) / 2;
 			w->y = ay + (ah - w->h) / 2;
 		}
+		if (visible(w))
+			deco_render(w);             /* przed anim: margines poświaty wchodzi w przycięcie */
+		anim_render_window(w, now);
+		if (!w->shown)
+			continue;
 		uint32_t c = w == focused ? THEME->focus : THEME->unfocus;
-		river_window_v1_show(w->rw);
-		river_node_v1_set_position(w->rn, w->x, w->y);
 		if (w->floating)
 			river_node_v1_place_top(w->rn);    /* nad kafelkami (pasek i tak wyżej) */
 		river_window_v1_set_borders(w->rw, RIVER_WINDOW_V1_EDGES_TOP | RIVER_WINDOW_V1_EDGES_BOTTOM |
@@ -767,6 +790,7 @@ static void wm_render_start(void *d, struct river_window_manager_v1 *m)
 	wl_list_for_each(o, &outputs, link)
 		urd_render(o);
 
+	anim_want = anim_busy(now);
 	river_window_manager_v1_render_finish(wm);
 }
 
@@ -776,6 +800,8 @@ static void wm_window(void *d, struct river_window_manager_v1 *m, struct river_w
 	w->rw = rw;
 	w->rn = river_window_v1_get_node(rw);
 	w->fresh = true;
+	w->pw = w->ph = -1;
+	deco_init(w);
 	river_window_v1_add_listener(rw, &win_listener, w);
 	wl_list_insert(windows.prev, &w->link);   /* na koniec listy */
 }
@@ -897,15 +923,22 @@ int main(void)
 	int tfd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC);
 	struct itimerspec its = { .it_interval = { 2, 0 }, .it_value = { 2, 0 } };
 	timerfd_settime(tfd, 0, &its, NULL);
-	struct pollfd fds[2] = {
+	/* klatki animacji okien (jednorazowo, ~60 Hz) i żywej tapety */
+	int afd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC);
+	int sfd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC);
+	bool anim_armed = false;
+	int sky_ms = -1;
+	struct pollfd fds[4] = {
 		{ .fd = wl_display_get_fd(display), .events = POLLIN },
 		{ .fd = tfd, .events = POLLIN },
+		{ .fd = afd, .events = POLLIN },
+		{ .fd = sfd, .events = POLLIN },
 	};
 	while (running) {
 		while (wl_display_prepare_read(display) != 0)
 			wl_display_dispatch_pending(display);
 		wl_display_flush(display);
-		if (poll(fds, 2, -1) < 0) {
+		if (poll(fds, 4, -1) < 0) {
 			wl_display_cancel_read(display);
 			continue;
 		}
@@ -926,6 +959,30 @@ int main(void)
 				continue;
 			sensors_update();
 			urd_redraw_bars();
+		}
+
+		uint64_t n;
+		if ((fds[2].revents & POLLIN) && read(afd, &n, sizeof n) > 0) {
+			anim_armed = false;
+			river_window_manager_v1_manage_dirty(wm);   /* kolejna klatka animacji */
+		}
+		if (anim_want && !anim_armed) {
+			struct itimerspec one = { .it_value = { 0, 16 * 1000000 } };
+			timerfd_settime(afd, 0, &one, NULL);
+			anim_armed = true;
+			anim_want = false;
+		}
+
+		bool sky_tick = (fds[3].revents & POLLIN) && read(sfd, &n, sizeof n) > 0;
+		if (sky_tick || sky_ms < 0) {
+			int want = urd_sky_frame(now_ms());
+			if (want != sky_ms) {       /* zmiana tempa (kometa) albo wł./wył. */
+				struct itimerspec it = { 0 };
+				if (want > 0)
+					it.it_value = it.it_interval = (struct timespec){ 0, want * 1000000L };
+				timerfd_settime(sfd, 0, &it, NULL);
+				sky_ms = want;
+			}
 		}
 	}
 

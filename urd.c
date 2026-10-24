@@ -1,10 +1,10 @@
 // urd — pasek i tapeta norns, rysowane do buforów wl_shm (pixman + fcft)
 #define _GNU_SOURCE
 #include <linux/input-event-codes.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/mman.h>
 #include <time.h>
 #include <unistd.h>
 #include <wchar.h>
@@ -20,55 +20,6 @@ static struct wl_pointer *pointer;
 static struct wl_surface *ptr_surf, *cursor_surf;
 static struct wl_cursor_image *cursor_img;
 static int ptr_x;
-
-/* ---------- bufory ---------- */
-
-struct buf {
-	struct wl_buffer *wb;
-	pixman_image_t *img;
-	void *data;
-	size_t size;
-};
-
-/* compositor oddał bufor — sprzątamy (każdy bufor jest jednorazowy) */
-static void buf_release(void *data, struct wl_buffer *wb)
-{
-	struct buf *b = data;
-	pixman_image_unref(b->img);
-	munmap(b->data, b->size);
-	wl_buffer_destroy(wb);
-	free(b);
-}
-
-static const struct wl_buffer_listener buf_listener = { .release = buf_release };
-
-static struct buf *buf_new(int w, int h)
-{
-	int stride = w * 4;
-	size_t size = (size_t)stride * h;
-	int fd = memfd_create("urd", MFD_CLOEXEC);
-	if (fd < 0)
-		return NULL;
-	if (ftruncate(fd, size) < 0) {
-		close(fd);
-		return NULL;
-	}
-	void *data = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-	if (data == MAP_FAILED) {
-		close(fd);
-		return NULL;
-	}
-	struct wl_shm_pool *pool = wl_shm_create_pool(shm, fd, size);
-	struct buf *b = calloc(1, sizeof *b);
-	b->wb = wl_shm_pool_create_buffer(pool, 0, w, h, stride, WL_SHM_FORMAT_XRGB8888);
-	wl_shm_pool_destroy(pool);
-	close(fd);
-	b->data = data;
-	b->size = size;
-	b->img = pixman_image_create_bits(PIXMAN_x8r8g8b8, w, h, data, stride);
-	wl_buffer_add_listener(b->wb, &buf_listener, b);
-	return b;
-}
 
 /* ---------- rysowanie ---------- */
 
@@ -238,38 +189,273 @@ static void draw_bar(struct output *o, pixman_image_t *img, int w, int h)
 		text(img, x + 2 * PAD, 0, h, sx - 2 * PAD, focused->title, t->fg);
 }
 
-/* Prosty, powtarzalny generator: te same gwiazdy po każdym przerysowaniu. */
+/* ---------- tapeta: GRUVBOX kropki, MU/TH/UR żywe gwiazdy i kometa ---------- */
+
+#define TRAIL       28              /* punkty ogona komety */
+#define TWINKLE_MS  200             /* tempo migotania */
+#define COMET_MS    33              /* klatki w czasie przelotu komety */
+#define COMET_LIFE  1400
+
+struct star {
+	int x, y, size;
+	int base;                       /* 0 line, 1 dim, 2 fg */
+	bool twinkle;
+	float phase, period;            /* period w ms */
+};
+
+struct sky {
+	int w, h, theme;
+	struct buf *b[2];
+	bool stale[2];                  /* bufor wymaga pełnego przerysowania */
+	int ntrail[2];
+	int trail[2][TRAIL][2];         /* piksele komety narysowane w danym buforze */
+	int last;                       /* ostatnio wysłany bufor */
+	struct star *stars;
+	int nstars;
+	int mark_x, mark_y, mark_w, mark_h;
+	uint64_t comet_t0, next_comet;
+	float cx, cy, vx, vy;           /* start i prędkość (px/ms) */
+	uint32_t seed;
+	uint64_t last_frame;
+};
+
+/* Prosty, powtarzalny generator. */
 static uint32_t rnd(uint32_t *s)
 {
 	*s = *s * 1103515245u + 12345u;
 	return *s >> 8;
 }
 
-static void draw_wall(struct output *o, pixman_image_t *img, int w, int h)
+static void sky_free_bufs(struct sky *k)
+{
+	for (int i = 0; i < 2; i++) {
+		buf_drop(k->b[i]);
+		k->b[i] = NULL;
+	}
+}
+
+/* Gwiazdy losowane raz na rozmiar monitora — przerysowanie daje ten sam układ. */
+static void sky_setup(struct output *o, struct sky *k, int w, int h)
+{
+	sky_free_bufs(k);
+	free(k->stars);
+	k->w = w;
+	k->h = h;
+	k->theme = -1;
+	uint32_t seed = (uint32_t)(o->x * 7919 + o->y * 104729 + w);
+	k->nstars = w * h / 5000;
+	k->stars = calloc(k->nstars, sizeof *k->stars);
+	for (int i = 0; i < k->nstars; i++) {
+		struct star *st = &k->stars[i];
+		st->x = rnd(&seed) % w;
+		st->y = rnd(&seed) % h;
+		uint32_t r = rnd(&seed) % 100;
+		st->base = r < 70 ? 0 : r < 95 ? 1 : 2;
+		st->size = r < 97 ? 1 : 2;
+		st->twinkle = rnd(&seed) % 100 < 15;
+		st->phase = (rnd(&seed) % 1000) / 1000.0f * 6.2832f;
+		st->period = 2500 + rnd(&seed) % 5500;
+	}
+	k->seed = seed;
+}
+
+static uint32_t star_color(const struct star *st, uint64_t now)
 {
 	const struct theme *t = THEME;
-	rect(img, 0, 0, w, h, t->wall);
+	const uint32_t pal[4] = { t->line, t->dim, t->fg, t->accent };
+	int idx = st->base;
+	if (st->twinkle && anim_on) {
+		uint64_t per = (uint64_t)st->period;
+		float s = sinf(st->phase + 6.2832f * (float)(now % per) / st->period);
+		idx += s > 0.6f ? 1 : s < -0.6f ? -1 : 0;
+	}
+	return pal[idx < 0 ? 0 : idx > 3 ? 3 : idx];
+}
 
-	if (theme_idx == 0) {               /* GRUVBOX: siatka kropek */
-		for (int y = 12; y < h; y += 24)
-			for (int x = 12; x < w; x += 24)
+static void sky_mark(struct sky *k, pixman_image_t *img)
+{
+	const struct theme *t = THEME;
+	const char *mark = theme_idx == 0 ? "norns" : "MU/TH/UR 6000";
+	k->mark_w = text_width(mark);
+	k->mark_h = fonts[theme_idx]->height;
+	k->mark_x = k->w - k->mark_w - 24;
+	k->mark_y = k->h - k->mark_h - 24;
+	rect(img, k->mark_x, k->mark_y, k->mark_w, k->mark_h, t->wall);
+	text(img, k->mark_x, k->mark_y, k->mark_h, k->w, mark, theme_idx == 0 ? t->focus : t->dim);
+}
+
+/* Głowa i ogon komety w chwili now: jasność maleje wzdłuż ogona. */
+static int comet_points(struct sky *k, uint64_t now, int pts[TRAIL][2], uint32_t col[TRAIL])
+{
+	const struct theme *t = THEME;
+	if (!k->comet_t0)
+		return 0;
+	float dt = (float)(now - k->comet_t0);
+	int n = 0;
+	for (int i = 0; i < TRAIL; i++) {
+		float tt = dt - i * 2.5f;           /* każdy punkt ogona 2,5 ms wcześniej */
+		if (tt < 0)
+			break;
+		int x = (int)(k->cx + k->vx * tt), y = (int)(k->cy + k->vy * tt);
+		if (x < 0 || y < 0 || x >= k->w || y >= k->h)
+			continue;
+		pts[n][0] = x;
+		pts[n][1] = y;
+		col[n] = i < 4 ? t->accent : i < 10 ? t->fg : i < 18 ? t->dim : t->line;
+		n++;
+	}
+	return n;
+}
+
+static void sky_full(struct output *o, struct sky *k, pixman_image_t *img, uint64_t now)
+{
+	const struct theme *t = THEME;
+	rect(img, 0, 0, k->w, k->h, t->wall);
+	if (theme_idx == 0) {
+		for (int y = 12; y < k->h; y += 24)
+			for (int x = 12; x < k->w; x += 24)
 				rect(img, x, y, 2, 2, t->dot);
-	} else {                            /* MU/TH/UR: gwiazdy */
-		uint32_t seed = (uint32_t)(o->x * 7919 + o->y * 104729 + w);
-		int n = w * h / 5000;
-		for (int i = 0; i < n; i++) {
-			int x = rnd(&seed) % w, y = rnd(&seed) % h;
-			uint32_t r = rnd(&seed) % 100;
-			uint32_t c = r < 70 ? t->line : r < 95 ? t->dim : t->fg;
-			int sz = r < 97 ? 1 : 2;
-			rect(img, x, y, sz, sz, c);
+		sky_mark(k, img);
+		return;
+	}
+	sky_mark(k, img);
+	for (int i = 0; i < k->nstars; i++) {
+		struct star *st = &k->stars[i];
+		rect(img, st->x, st->y, st->size, st->size, star_color(st, now));
+	}
+}
+
+/* Wybiera wolny bufor (najlepiej nie ten, który compositor właśnie pokazuje). */
+static int sky_pick(struct sky *k)
+{
+	int order[2] = { !k->last, k->last };
+	for (int j = 0; j < 2; j++) {
+		int i = order[j];
+		if (!k->b[i]) {
+			k->b[i] = buf_new(k->w, k->h, false, true);
+			k->stale[i] = true;
+		}
+		if (k->b[i] && !k->b[i]->busy)
+			return i;
+	}
+	return -1;
+}
+
+/* Pełna tapeta przy zmianie rozmiaru lub motywu — wołane z sekwencji render. */
+static void sky_render(struct output *o, bool sync)
+{
+	struct surf *s = &o->wall;
+	if (s->w <= 0 || s->h <= 0)
+		return;
+	if (!o->sky)
+		o->sky = calloc(1, sizeof *o->sky);
+	struct sky *k = o->sky;
+	if (k->w != s->w || k->h != s->h)
+		sky_setup(o, k, s->w, s->h);
+	if (!s->dirty && k->theme == theme_idx)
+		return;
+	k->stale[0] = k->stale[1] = true;
+	k->ntrail[0] = k->ntrail[1] = 0;
+	int i = sky_pick(k);
+	if (i < 0)
+		return;                     /* oba zajęte — spróbujemy w następnej sekwencji */
+	uint64_t now = now_ms();
+	sky_full(o, k, k->b[i]->img, now);
+	k->stale[i] = false;
+	k->theme = theme_idx;
+	if (sync)
+		river_shell_surface_v1_sync_next_commit(s->ss);
+	buf_attach(k->b[i], s->wl);
+	wl_surface_damage_buffer(s->wl, 0, 0, k->w, k->h);
+	wl_surface_commit(s->wl);
+	k->last = i;
+	s->dirty = false;
+}
+
+/* Jedna klatka żywej tapety: tylko zmienione piksele, commit bez sync. */
+static int sky_frame(struct output *o, struct sky *k, uint64_t now)
+{
+	struct surf *s = &o->wall;
+
+	if (!k->next_comet)
+		k->next_comet = now + 8000 + rnd(&k->seed) % 30000;
+	if (!k->comet_t0 && now >= k->next_comet) {   /* nowa kometa: z góry, w dół i w bok */
+		k->comet_t0 = now;
+		k->cx = rnd(&k->seed) % k->w;
+		k->cy = 0;
+		float ang = (25 + rnd(&k->seed) % 30) * 3.14159f / 180;
+		float dir = rnd(&k->seed) % 2 ? 1.0f : -1.0f;
+		float speed = (k->h * 0.9f) / COMET_LIFE / sinf(ang);
+		k->vx = dir * speed * cosf(ang);
+		k->vy = speed * sinf(ang);
+	}
+	bool comet = k->comet_t0 && now < k->comet_t0 + COMET_LIFE + TRAIL * 3;
+	if (k->comet_t0 && !comet) {
+		k->comet_t0 = 0;
+		k->next_comet = now + 25000 + rnd(&k->seed) % 45000;
+	}
+
+	if (!comet && k->ntrail[0] == 0 && k->ntrail[1] == 0 && now < k->last_frame + TWINKLE_MS)
+		return TWINKLE_MS;
+
+	int i = sky_pick(k);
+	if (i < 0)
+		return COMET_MS;
+	pixman_image_t *img = k->b[i]->img;
+	const struct theme *t = THEME;
+
+	if (k->stale[i]) {
+		sky_full(o, k, img, now);
+		k->stale[i] = false;
+		wl_surface_damage_buffer(s->wl, 0, 0, k->w, k->h);
+	} else {
+		for (int j = 0; j < k->ntrail[i]; j++) {        /* zmaż starą kometę z tego bufora */
+			rect(img, k->trail[i][j][0], k->trail[i][j][1], 2, 2, t->wall);
+			wl_surface_damage_buffer(s->wl, k->trail[i][j][0], k->trail[i][j][1], 2, 2);
+		}
+		if (k->ntrail[i])
+			sky_mark(k, img);
+		for (int j = 0; j < k->nstars; j++) {
+			struct star *st = &k->stars[j];
+			rect(img, st->x, st->y, st->size, st->size, star_color(st, now));
+			if (st->twinkle)
+				wl_surface_damage_buffer(s->wl, st->x, st->y, st->size, st->size);
 		}
 	}
 
-	const char *mark = theme_idx == 0 ? "norns" : "MU/TH/UR 6000";
-	int mw = text_width(mark);
-	int mh = fonts[theme_idx]->height;
-	text(img, w - mw - 24, h - mh - 24, mh, w, mark, theme_idx == 0 ? t->focus : t->dim);
+	int pts[TRAIL][2];
+	uint32_t col[TRAIL];
+	int n = comet_points(k, now, pts, col);
+	for (int j = n - 1; j >= 0; j--) {                  /* ogon pod głową */
+		rect(img, pts[j][0], pts[j][1], 2, 2, col[j]);
+		wl_surface_damage_buffer(s->wl, pts[j][0], pts[j][1], 2, 2);
+		k->trail[i][j][0] = pts[j][0];
+		k->trail[i][j][1] = pts[j][1];
+	}
+	k->ntrail[i] = n;
+
+	buf_attach(k->b[i], s->wl);
+	wl_surface_commit(s->wl);
+	k->last = i;
+	k->last_frame = now;
+	return comet ? COMET_MS : TWINKLE_MS;
+}
+
+int urd_sky_frame(uint64_t now)
+{
+	if (theme_idx != 1 || !anim_on)
+		return -1;
+	int next = TWINKLE_MS;
+	struct output *o;
+	wl_list_for_each(o, &outputs, link) {
+		struct sky *k = o->sky;
+		if (!k || !k->w || k->theme != theme_idx)
+			continue;
+		int n = sky_frame(o, k, now);
+		if (n < next)
+			next = n;
+	}
+	return next;
 }
 
 /* ---------- powierzchnie ---------- */
@@ -302,6 +488,11 @@ void urd_output_fini(struct output *o)
 {
 	surf_fini(&o->bar);
 	surf_fini(&o->wall);
+	if (o->sky) {
+		sky_free_bufs(o->sky);
+		free(o->sky->stars);
+		free(o->sky);
+	}
 }
 
 /* Rysuje i commituje powierzchnię; sync = razem z najbliższym render_finish. */
@@ -312,13 +503,13 @@ static void surf_draw(struct surf *s, struct output *o, bool sync,
 		return;
 	if (!s->dirty && s->w == s->drawn_w && s->h == s->drawn_h)
 		return;
-	struct buf *b = buf_new(s->w, s->h);
+	struct buf *b = buf_new(s->w, s->h, false, false);
 	if (!b)
 		return;
 	draw(o, b->img, s->w, s->h);
 	if (sync)
 		river_shell_surface_v1_sync_next_commit(s->ss);
-	wl_surface_attach(s->wl, b->wb, 0, 0);
+	buf_attach(b, s->wl);
 	wl_surface_damage_buffer(s->wl, 0, 0, s->w, s->h);
 	wl_surface_commit(s->wl);
 	s->drawn_w = s->w;
@@ -328,7 +519,7 @@ static void surf_draw(struct surf *s, struct output *o, bool sync,
 
 void urd_render(struct output *o)
 {
-	surf_draw(&o->wall, o, true, draw_wall);
+	sky_render(o, true);
 	surf_draw(&o->bar, o, true, draw_bar);
 	river_node_v1_set_position(o->wall.node, o->wall.x, o->wall.y);
 	river_node_v1_set_position(o->bar.node, o->bar.x, o->bar.y);
@@ -441,3 +632,10 @@ bool urd_init(void)
 	}
 	return true;
 }
+
+#ifdef NORNS_TEST
+void sky_test_comet(struct output *o, uint64_t now) { o->sky->next_comet = now; }
+void sky_test_full(struct output *o, pixman_image_t *img, uint64_t now) { sky_full(o, o->sky, img, now); }
+int sky_test_last(struct output *o) { return o->sky->last; }
+uint64_t sky_test_lastframe(struct output *o) { return o->sky->last_frame; }
+#endif

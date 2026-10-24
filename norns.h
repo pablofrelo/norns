@@ -2,12 +2,31 @@
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
+#include <pixman.h>
 #include <wayland-client.h>
 #include "river-layer-shell-v1-client-protocol.h"
 #include "river-window-management-v1-client-protocol.h"
 #include "river-xkb-bindings-v1-client-protocol.h"
 
 #define NTAGS 9
+#define GAP    8
+#define BORDER 2
+
+/* ---------- bufory (shm.c) ---------- */
+
+struct buf {
+	struct wl_buffer *wb;
+	pixman_image_t *img;
+	void *data;
+	size_t size;
+	int w, h;
+	bool keep;                      /* wielokrotny: po release wraca do puli */
+	bool busy;                      /* trzymany przez compositor */
+};
+
+struct buf *buf_new(int w, int h, bool alpha, bool keep);
+void buf_attach(struct buf *b, struct wl_surface *s);
+void buf_drop(struct buf *b);
 
 /* ---------- motywy ---------- */
 
@@ -52,6 +71,9 @@ struct output {
 	struct node *roots[NTAGS];      /* osobne drzewo na każdy tag */
 	int tag;                        /* aktualnie widoczny tag */
 	struct surf bar, wall;
+	struct sky *sky;                /* żywa tapeta (urd.c) */
+	int slide_from, slide_dir;      /* animacja przełączania tagów */
+	uint64_t slide_t0;
 	int ax, ay, aw, ah;             /* obszar na okna (bez paneli i paska) */
 	int tag_x[NTAGS + 1];           /* granice klikalnych tagów na pasku */
 	int theme_x;                    /* od tego x klik przełącza motyw */
@@ -72,8 +94,27 @@ struct win {
 	int float_pending;              /* 0 nic, 1 rozmiar wg okna, 2 zaproponuj 60% ekranu */
 	bool tiled_dirty;               /* trzeba powiedzieć oknu, czy jest kafelkiem */
 	int dw, dh;                     /* rzeczywisty rozmiar (event dimensions) */
-	int x, y, w, h;                 /* treść okna (bez ramki) */
+	int pw, ph;                     /* ostatnio zaproponowany rozmiar */
+	int x, y, w, h;                 /* treść okna (bez ramki) — cel z layoutu */
+
+	/* animacja (anim.c) */
+	bool shown, ever_shown, clip_on;
+	int bx, by;                     /* pozycja wyświetlona (bez przesunięcia ślizgu) */
+	int tx, ty;                     /* poprzedni cel, żeby wykryć zmianę */
+	int mfx, mfy;                   /* skąd jedzie */
+	uint64_t move_t0, open_t0;
+
+	/* poświata / cień (deco.c) */
+	struct wl_surface *deco_wl[4];  /* paski: góra, dół, lewo, prawo */
+	struct river_decoration_v1 *deco[4];
+	int deco_kind, deco_r, deco_w, deco_h;
+	uint32_t deco_color;
 };
+
+static inline bool win_visible(const struct win *w)
+{
+	return w->out && w->tag == w->out->tag;
+}
 
 /* ---------- sensory (sensors.c) ---------- */
 
@@ -96,6 +137,18 @@ extern struct wl_shm *shm;
 extern struct wl_list windows, outputs;
 extern struct win *focused;
 
+/* anim.c */
+extern bool anim_on;
+uint64_t now_ms(void);
+void anim_tag_switch(struct output *o, int from, int to);
+void anim_render_window(struct win *w, uint64_t now);   /* tylko w sekwencji render */
+bool anim_busy(uint64_t now);
+
+/* deco.c */
+void deco_init(struct win *w);
+void deco_fini(struct win *w);
+void deco_render(struct win *w);                        /* tylko w sekwencji render */
+
 /* norns.c — akcje wołane z paska */
 void view_tag(struct output *o, int tag);
 void toggle_theme(void);
@@ -108,3 +161,4 @@ void urd_output_init(struct output *o);
 void urd_output_fini(struct output *o);
 void urd_render(struct output *o);   /* tylko w trakcie sekwencji render */
 void urd_redraw_bars(void);          /* poza sekwencjami: zegar i sensory */
+int urd_sky_frame(uint64_t now);     /* klatka żywej tapety; zwraca ms do następnej lub -1 */
