@@ -634,6 +634,17 @@ static void load_theme(void)
 	fclose(f);
 }
 
+/* Menu wyłączania z paska. Wyłączenie i restart przez logind (systemctl). */
+void power_action(int i)
+{
+	static const char *const reboot[] = { "systemctl", "reboot", NULL };
+	static const char *const poweroff[] = { "systemctl", "poweroff", NULL };
+	if (i == 0)
+		river_window_manager_v1_exit_session(wm);   /* koniec sesji rivera */
+	else
+		spawn(i == 1 ? reboot : poweroff);
+}
+
 /* Przełącza motyw: ramki, pasek, tapeta, plus skrypt użytkownika dla aplikacji. */
 void toggle_theme(void)
 {

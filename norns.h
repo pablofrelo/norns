@@ -79,6 +79,8 @@ struct output {
 	int ax, ay, aw, ah;             /* obszar na okna (bez paneli i paska) */
 	int tag_x[NTAGS + 1];           /* granice klikalnych tagów na pasku */
 	int theme_x;                    /* od tego x klik przełącza motyw */
+	int off_x;                      /* od tego x klik otwiera menu wyłączania */
+	int menu_x[5];                  /* granice opcji menu na pasku */
 };
 
 struct win {
@@ -163,6 +165,7 @@ void deco_render(struct win *w);                        /* tylko w sekwencji ren
 /* norns.c — akcje wołane z paska */
 void view_tag(struct output *o, int tag);
 void toggle_theme(void);
+void power_action(int i);            /* 0 wyloguj, 1 restart, 2 wyłącz */
 
 /* urd.c */
 bool urd_init(void);
