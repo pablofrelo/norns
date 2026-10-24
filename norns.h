@@ -86,6 +86,7 @@ struct output {
 	int theme_x;                    /* od tego x klik przełącza motyw */
 	int off_x;                      /* od tego x klik otwiera menu wyłączania */
 	int menu_x[5];                  /* granice opcji menu na pasku */
+	int tray_x0, tray_slot;         /* zasobnik na pasku (piksele bufora) */
 };
 
 struct win {
@@ -184,6 +185,26 @@ void urd_render(struct output *o);   /* tylko w trakcie sekwencji render */
 void urd_redraw_bars(void);          /* poza sekwencjami: zegar i sensory */
 int urd_sky_frame(uint64_t now);     /* klatka żywej tapety; zwraca ms do następnej lub -1 */
 void urd_cursor(const char *name);   /* kształt kursora, gdy żaden klient nie ma wskaźnika */
+
+/* ---------- zasobnik (tray.c) ---------- */
+
+#define TRAY_MAX 16
+
+struct sd_bus_slot;
+struct tray_item {
+	char *service, *path;           /* gdzie mieszka StatusNotifierItem */
+	char owner[256];                /* unikalna nazwa na magistrali (":1.42") */
+	char *id, *title;
+	pixman_image_t *icon;           /* premultiplied ARGB, rozmiar oryginalny */
+	bool attention;                 /* Status = NeedsAttention */
+	struct sd_bus_slot *sig_slot, *get_slot;
+};
+
+extern struct tray_item *tray_items[TRAY_MAX];
+extern int tray_n;
+int tray_init(void);                 /* zwraca fd magistrali albo -1 */
+void tray_dispatch(void);
+void tray_click(int i, int button, int x, int y);   /* 1 lewy, 2 środkowy, 3 prawy */
 
 /* ---------- skróty i reguły (definicje w config.h) ---------- */
 

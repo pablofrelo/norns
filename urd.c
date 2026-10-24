@@ -57,7 +57,7 @@ static struct wl_pointer *pointer;
 static struct wl_surface *ptr_surf, *cursor_surf;
 static struct wl_cursor_image *cursor_img;
 static struct wl_cursor_theme *cursor_theme;
-static int ptr_x;
+static int ptr_x, ptr_y;
 static bool menu_open;              /* menu wyłączania rozwinięte na pasku */
 static const char *const menu_items[4] = { "WYLOGUJ", "RESTART", "WYŁĄCZ", "ANULUJ" };
 
@@ -234,7 +234,31 @@ static void draw_bar(struct output *o, pixman_image_t *img, int w, int h)
 	int cx = o->theme_x - text_width(clock) - PAD;
 	text(img, cx, 0, h, o->theme_x, clock, t->fg);
 
-	int sx = draw_sensors(img, cx - 2 * PAD, h, x);
+	/* zasobnik: ikonki tuż przed zegarem */
+	int slot = h, isz = h - 2 * (h / 8);
+	o->tray_slot = slot;
+	o->tray_x0 = cx - PAD - tray_n * slot;
+	for (int i = 0; i < tray_n; i++) {
+		pixman_image_t *ic = tray_items[i]->icon;
+		int ix = o->tray_x0 + i * slot + (slot - isz) / 2, iy = (h - isz) / 2;
+		if (ic) {
+			int iw = pixman_image_get_width(ic), ih = pixman_image_get_height(ic);
+			pixman_transform_t tf;
+			pixman_transform_init_scale(&tf, pixman_double_to_fixed((double)iw / isz),
+			                            pixman_double_to_fixed((double)ih / isz));
+			pixman_image_set_transform(ic, &tf);
+			pixman_image_set_filter(ic, PIXMAN_FILTER_BILINEAR, NULL, 0);
+			pixman_image_composite32(PIXMAN_OP_OVER, ic, NULL, img, 0, 0, 0, 0, ix, iy, isz, isz);
+			pixman_image_set_transform(ic, NULL);
+		} else {
+			rect(img, ix + isz / 4, iy + isz / 4, isz / 2, isz / 2, t->dim);   /* ikonka bez obrazka */
+		}
+		if (tray_items[i]->attention)
+			rect(img, ix, h - 3, isz, 2, t->alarm);
+	}
+	int right = tray_n ? o->tray_x0 - PAD : cx - 2 * PAD;
+
+	int sx = draw_sensors(img, right, h, x);
 
 	/* menu wyłączania zamiast tytułu */
 	if (menu_open) {
@@ -648,6 +672,7 @@ static void ptr_enter(void *d, struct wl_pointer *p, uint32_t serial, struct wl_
 {
 	ptr_surf = s;
 	ptr_x = wl_fixed_to_int(x);
+	ptr_y = wl_fixed_to_int(y);
 	if (cursor_img)
 		wl_pointer_set_cursor(p, serial, cursor_surf, cursor_img->hotspot_x, cursor_img->hotspot_y);
 }
@@ -660,11 +685,12 @@ static void ptr_leave(void *d, struct wl_pointer *p, uint32_t serial, struct wl_
 static void ptr_motion(void *d, struct wl_pointer *p, uint32_t time, wl_fixed_t x, wl_fixed_t y)
 {
 	ptr_x = wl_fixed_to_int(x);
+	ptr_y = wl_fixed_to_int(y);
 }
 
 static void ptr_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t time, uint32_t button, uint32_t state)
 {
-	if (state != WL_POINTER_BUTTON_STATE_PRESSED || button != BTN_LEFT || !ptr_surf)
+	if (state != WL_POINTER_BUTTON_STATE_PRESSED || !ptr_surf)
 		return;
 	struct output *o;
 	wl_list_for_each(o, &outputs, link) {
@@ -672,6 +698,14 @@ static void ptr_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t 
 			continue;
 		/* granice na pasku są w pikselach bufora, kursor w logicznych */
 		int bx = ptr_x * (o->bar.vp ? o->bar.scale120 : 120) / 120;
+		if (tray_n && bx >= o->tray_x0 && bx < o->tray_x0 + tray_n * o->tray_slot) {
+			int b = button == BTN_LEFT ? 1 : button == BTN_MIDDLE ? 2 : button == BTN_RIGHT ? 3 : 0;
+			if (b)
+				tray_click((bx - o->tray_x0) / o->tray_slot, b, o->bar.x + ptr_x, o->bar.y + ptr_y);
+			return;
+		}
+		if (button != BTN_LEFT)
+			return;
 		if (bx >= o->off_x) {
 			menu_open = !menu_open;
 			urd_redraw_bars();

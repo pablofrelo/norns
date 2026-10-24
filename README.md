@@ -23,14 +23,16 @@ and used daily on my own machine.
   number, not by the changing DP-n connector name
 - urd stays sharp on fractionally scaled outputs (e.g. 1.25)
 - urd: clickable tags, window title, network/WireGuard, CPU, RAM, temperature,
-  battery, volume, clock, theme switch, power menu
+  battery, volume, system tray (StatusNotifierItem: left click activates, middle
+  is the secondary action), clock, theme switch, power menu
 - MU/TH/UR: green glow around the focused window, twinkling stars, a comet now
   and then; Super+A turns all motion off
 
 ## Requirements
 
 river 0.4 or newer (river-protocols), wayland, wayland-protocols,
-wayland-cursor, xkbcommon, fcft, pixman, a C11 compiler, make. Optional: `wpctl` (PipeWire) for volume,
+wayland-cursor, xkbcommon, fcft, pixman, libsystemd (sd-bus, for the tray),
+libpng, a C11 compiler, make. Optional: `wpctl` (PipeWire) for volume,
 `systemctl` for the power menu, foot as the terminal.
 
 On Arch: `pacman -S river wayland wayland-protocols libxkbcommon fcft pixman tllist`

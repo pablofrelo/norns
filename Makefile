@@ -5,11 +5,11 @@ WLPROTOS  = fractional-scale-v1 viewporter
 
 CFLAGS ?= -O2 -g
 CFLAGS += -std=c11 -Wall -Wextra -Wno-unused-parameter -Iprotocol \
-          $(shell pkg-config --cflags wayland-client wayland-cursor xkbcommon fcft pixman-1)
-LDLIBS += $(shell pkg-config --libs wayland-client wayland-cursor fcft pixman-1) -lm
+          $(shell pkg-config --cflags wayland-client wayland-cursor xkbcommon fcft pixman-1 libsystemd libpng)
+LDLIBS += $(shell pkg-config --libs wayland-client wayland-cursor fcft pixman-1 libsystemd libpng) -lm
 
 HDRS = $(PROTOS:%=protocol/%-client-protocol.h) $(WLPROTOS:%=protocol/%-client-protocol.h)
-SRCS = norns.c urd.c sensors.c shm.c anim.c deco.c $(PROTOS:%=protocol/%-protocol.c) \
+SRCS = norns.c urd.c sensors.c shm.c anim.c deco.c tray.c $(PROTOS:%=protocol/%-protocol.c) \
        $(WLPROTOS:%=protocol/%-protocol.c)
 
 norns: $(SRCS) $(HDRS) norns.h config.h

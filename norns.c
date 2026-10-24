@@ -1468,17 +1468,20 @@ int main(void)
 	int sfd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC);
 	bool anim_armed = false;
 	int sky_ms = -1;
-	struct pollfd fds[4] = {
+	int bfd = tray_init();          /* zasobnik po D-Bus; -1 = bez zasobnika */
+	struct pollfd fds[5] = {
 		{ .fd = wl_display_get_fd(display), .events = POLLIN },
 		{ .fd = tfd, .events = POLLIN },
 		{ .fd = afd, .events = POLLIN },
 		{ .fd = sfd, .events = POLLIN },
+		{ .fd = bfd, .events = POLLIN },  /* poll pomija ujemny fd */
 	};
+	tray_dispatch();
 	while (running) {
 		while (wl_display_prepare_read(display) != 0)
 			wl_display_dispatch_pending(display);
 		wl_display_flush(display);
-		if (poll(fds, 4, -1) < 0) {
+		if (poll(fds, 5, -1) < 0) {
 			wl_display_cancel_read(display);
 			continue;
 		}
@@ -1500,6 +1503,9 @@ int main(void)
 			sensors_update();
 			urd_redraw_bars();
 		}
+
+		if (fds[4].revents & POLLIN)
+			tray_dispatch();
 
 		uint64_t n;
 		if ((fds[2].revents & POLLIN) && read(afd, &n, sizeof n) > 0) {
