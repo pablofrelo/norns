@@ -9,7 +9,7 @@
 #include "river-xkb-bindings-v1-client-protocol.h"
 
 #define NTAGS 9
-#define GAP    8
+#define GAP    16
 #define BORDER 2
 
 /* ---------- bufory (shm.c) ---------- */
