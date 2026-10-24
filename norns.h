@@ -88,6 +88,7 @@ struct output {
 	int menu_x[5];                  /* granice opcji menu na pasku */
 	int tray_x0, tray_slot;         /* zasobnik na pasku (piksele bufora) */
 	struct fx *fx;                  /* warstwa efektów trybu Nostromo (nostromo.c) */
+	struct fx *crt;                 /* stałe linie kineskopu w trybie Nostromo */
 };
 
 struct win {
