@@ -600,6 +600,18 @@ static void load_theme(void)
 }
 
 /* Menu wyłączania z paska. Wyłączenie i restart przez logind (systemctl). */
+/* Aplikacje z zasobnika (Electron: Beeper itd.) rysują menu jako zwykłe nowe
+ * okno. Okno, które pojawi się chwilę po prawym kliku w ikonkę, traktujemy
+ * jak menu: pływa, ma własny rozmiar, stoi pod kursorem przy pasku. */
+static struct { uint64_t t; int x, y; } popup;
+
+void expect_popup(int x, int y)
+{
+	popup.t = now_ms();
+	popup.x = x;
+	popup.y = y;
+}
+
 void power_action(int i)
 {
 	static const char *const reboot[] = { "systemctl", "reboot", NULL };
@@ -1069,6 +1081,14 @@ static void wm_manage_start(void *d, struct river_window_manager_v1 *m)
 			w->floating = should_float(w);
 			w->float_pending = w->floating ? 1 : 0;
 			w->tiled_dirty = true;
+			if (popup.t && now_ms() - popup.t < 1500) {    /* menu z zasobnika */
+				w->floating = true;
+				w->float_pending = 3;               /* niech samo wybierze rozmiar */
+				w->placed = true;
+				w->x = popup.x;
+				w->y = popup.y;
+				popup.t = 0;
+			}
 		}
 		/* dialog ląduje tam, gdzie jego rodzic; nowe okno — wg reguł, jeśli monitor jest */
 		struct output *to = act;
@@ -1077,7 +1097,7 @@ static void wm_manage_start(void *d, struct river_window_manager_v1 *m)
 		if (w->floating && w->parent && w->parent->out) {
 			to = w->parent->out;
 			tag = w->parent->tag;
-		} else if (w->fresh && (r = rule_for(w))) {
+		} else if (w->fresh && w->float_pending != 3 && (r = rule_for(w))) {
 			struct output *ro = rule_output(r->output);
 			if (ro) {
 				to = ro;
@@ -1193,6 +1213,8 @@ static void wm_manage_start(void *d, struct river_window_manager_v1 *m)
 		}
 		else if (w->float_pending == 2)                    /* Super+F: 60% obszaru */
 			river_window_v1_propose_dimensions(w->rw, w->out->aw * 3 / 5, w->out->ah * 3 / 5);
+		else if (w->float_pending == 3)                    /* menu: własny rozmiar */
+			river_window_v1_propose_dimensions(w->rw, 0, 0);
 		if (w->floating)
 			w->float_pending = 0;
 	}
@@ -1241,6 +1263,16 @@ static void wm_render_start(void *d, struct river_window_manager_v1 *m)
 		if (visible(w) && w->floating && w->placed) {
 			w->w = w->dw;
 			w->h = w->dh;
+			/* nie wychodzi za monitor (menu z zasobnika przy prawej krawędzi) */
+			struct output *o = w->out;
+			if (w->x + w->w + BORDER > o->x + o->w)
+				w->x = o->x + o->w - w->w - BORDER;
+			if (w->y + w->h + BORDER > o->y + o->h)
+				w->y = o->y + o->h - w->h - BORDER;
+			if (w->x < o->x + BORDER)
+				w->x = o->x + BORDER;
+			if (w->y < o->y + BORDER)
+				w->y = o->y + BORDER;
 		}
 		if (visible(w))
 			deco_render(w);             /* przed anim: margines poświaty wchodzi w przycięcie */

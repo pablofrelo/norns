@@ -700,6 +700,8 @@ static void ptr_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t 
 		int bx = ptr_x * (o->bar.vp ? o->bar.scale120 : 120) / 120;
 		if (tray_n && bx >= o->tray_x0 && bx < o->tray_x0 + tray_n * o->tray_slot) {
 			int b = button == BTN_LEFT ? 1 : button == BTN_MIDDLE ? 2 : button == BTN_RIGHT ? 3 : 0;
+			if (b == 3)
+				expect_popup(o->bar.x + ptr_x, o->bar.y + o->bar.h);   /* menu pod paskiem */
 			if (b)
 				tray_click((bx - o->tray_x0) / o->tray_slot, b, o->bar.x + ptr_x, o->bar.y + ptr_y);
 			return;

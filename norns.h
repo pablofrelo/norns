@@ -174,6 +174,7 @@ void deco_render(struct win *w);                        /* tylko w sekwencji ren
 void view_tag(struct output *o, int tag);
 void toggle_theme(void);
 void power_action(int i);            /* 0 wyloguj, 1 restart, 2 wyłącz */
+void expect_popup(int x, int y);     /* po prawym kliku w zasobnik: następne okno to menu */
 
 /* urd.c */
 bool urd_init(void);
