@@ -66,6 +66,7 @@ struct surf {                       /* powierzchnia rysowana przez norns */
 struct output {
 	struct wl_list link;
 	struct river_output_v1 *ro;
+	uint32_t wl_name;               /* globalny wl_output tego monitora */
 	int x, y, w, h;
 	struct river_layer_shell_output_v1 *lo;
 	int ux, uy, uw, uh;             /* obszar bez paneli (layer shell) */

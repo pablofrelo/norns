@@ -86,6 +86,20 @@ static const struct key keys[] = {
 };
 #define NKEYS (sizeof keys / sizeof keys[0])
 
+/* Gdzie lądują nowe okna aplikacji. Monitor po fragmencie opisu wl_output
+ * (model + numer seryjny + złącze, zobacz: wlr-randr) — numer seryjny się
+ * nie zmienia, nazwy DP-n potrafią. tag: 1–9, 0 = aktualnie widoczny.
+ * Gdy monitora nie ma, okno ląduje normalnie, pod kursorem. */
+static const struct rule {
+	const char *app_id;
+	const char *output;
+	int tag;
+} rules[] = {
+	{ "firefox", "1O0R9HA001785", 0 },     /* lewy AOC */
+	{ "foot",    "1O0R9HA001780", 0 },     /* prawy AOC */
+};
+#define NRULES (sizeof rules / sizeof rules[0])
+
 /* ---------- stan ---------- */
 
 struct seat {
@@ -110,6 +124,15 @@ static bool focus_dirty, close_focused, bars_dirty = true, running = true;
 static bool anim_want;              /* po render: potrzebna kolejna klatka animacji */
 static int ptr_x, ptr_y;
 static bool ptr_known, warp;
+
+/* Opisy monitorów z wl_output: "AOC Q27G42XNE 1O0R9HA001780 (DP-9)". */
+struct wlout {
+	struct wl_list link;
+	struct wl_output *wo;
+	uint32_t name;
+	char *desc, *conn;
+};
+static struct wl_list wlouts;
 static struct win *hover;           /* okno pod kursorem (pointer_enter) */
 
 /* Przeciąganie myszą: Super+lewy przesuwa, Super+prawy zmienia rozmiar.
@@ -821,7 +844,32 @@ static void out_dimensions(void *data, struct river_output_v1 *ro, int32_t w, in
 	o->h = h;
 }
 
-static void out_wl_output(void *d, struct river_output_v1 *ro, uint32_t name) {}
+static void out_wl_output(void *data, struct river_output_v1 *ro, uint32_t name)
+{
+	struct output *o = data;
+	o->wl_name = name;
+}
+
+/* Monitor pasujący do reguły: fragment opisu albo nazwy złącza. */
+static struct output *rule_output(const char *match)
+{
+	struct output *o;
+	struct wlout *wo;
+	wl_list_for_each(o, &outputs, link)
+		wl_list_for_each(wo, &wlouts, link)
+			if (wo->name == o->wl_name &&
+			    ((wo->desc && strstr(wo->desc, match)) || (wo->conn && strstr(wo->conn, match))))
+				return o;
+	return NULL;
+}
+
+static const struct rule *rule_for(struct win *w)
+{
+	for (size_t i = 0; w->app_id && i < NRULES; i++)
+		if (!strcmp(w->app_id, rules[i].app_id))
+			return &rules[i];
+	return NULL;
+}
 static void out_capture_sessions(void *d, struct river_output_v1 *ro, uint32_t n) {}
 
 static const struct river_output_v1_listener out_listener = {
@@ -991,9 +1039,21 @@ static void wm_manage_start(void *d, struct river_window_manager_v1 *m)
 			w->float_pending = w->floating ? 1 : 0;
 			w->tiled_dirty = true;
 		}
-		/* dialog ląduje tam, gdzie jego rodzic */
-		struct output *to = w->floating && w->parent && w->parent->out ? w->parent->out : act;
-		attach(w, to, w->floating && w->parent && w->parent->out ? w->parent->tag : to->tag);
+		/* dialog ląduje tam, gdzie jego rodzic; nowe okno — wg reguł, jeśli monitor jest */
+		struct output *to = act;
+		int tag = act->tag;
+		const struct rule *r;
+		if (w->floating && w->parent && w->parent->out) {
+			to = w->parent->out;
+			tag = w->parent->tag;
+		} else if (w->fresh && (r = rule_for(w))) {
+			struct output *ro = rule_output(r->output);
+			if (ro) {
+				to = ro;
+				tag = r->tag > 0 ? r->tag - 1 : ro->tag;
+			}
+		}
+		attach(w, to, tag);
 		if (w->fresh) {
 			w->fresh = false;
 			river_window_v1_use_ssd(w->rw);
@@ -1202,6 +1262,35 @@ static const struct river_window_manager_v1_listener wm_listener = {
 
 /* ---------- rejestr i main ---------- */
 
+static void wo_geometry(void *d, struct wl_output *o, int32_t x, int32_t y, int32_t pw, int32_t ph,
+                        int32_t sub, const char *make, const char *model, int32_t tr) {}
+static void wo_mode(void *d, struct wl_output *o, uint32_t f, int32_t w, int32_t h, int32_t r) {}
+static void wo_done(void *d, struct wl_output *o) {}
+static void wo_scale(void *d, struct wl_output *o, int32_t f) {}
+
+static void wo_name(void *data, struct wl_output *o, const char *name)
+{
+	struct wlout *wo = data;
+	free(wo->conn);
+	wo->conn = strdup(name);
+}
+
+static void wo_description(void *data, struct wl_output *o, const char *desc)
+{
+	struct wlout *wo = data;
+	free(wo->desc);
+	wo->desc = strdup(desc);
+}
+
+static const struct wl_output_listener wo_listener = {
+	.geometry = wo_geometry,
+	.mode = wo_mode,
+	.done = wo_done,
+	.scale = wo_scale,
+	.name = wo_name,
+	.description = wo_description,
+};
+
 /* Najpierw tylko zapamiętujemy globale; bindujemy po roundtripie, żeby
  * żaden event wm nie przyszedł, zanim podepniemy listener. */
 static uint32_t wm_name, wm_ver, xkb_name, xkb_ver, ls_name;
@@ -1221,13 +1310,31 @@ static void reg_global(void *d, struct wl_registry *reg, uint32_t name, const ch
 		compositor = wl_registry_bind(reg, name, &wl_compositor_interface, ver < 4 ? ver : 4);
 	} else if (!strcmp(iface, wl_shm_interface.name)) {
 		shm = wl_registry_bind(reg, name, &wl_shm_interface, 1);
+	} else if (!strcmp(iface, wl_output_interface.name) && ver >= 4) {
+		struct wlout *wo = calloc(1, sizeof *wo);
+		wo->name = name;
+		wo->wo = wl_registry_bind(reg, name, &wl_output_interface, 4);   /* v4: name, description */
+		wl_output_add_listener(wo->wo, &wo_listener, wo);
+		wl_list_insert(&wlouts, &wo->link);
 	} else if (!strcmp(iface, wl_seat_interface.name) && !seat_bound) {
 		seat_bound = true;
 		urd_bind_seat(reg, name);
 	}
 }
 
-static void reg_global_remove(void *d, struct wl_registry *reg, uint32_t name) {}
+static void reg_global_remove(void *d, struct wl_registry *reg, uint32_t name)
+{
+	struct wlout *wo, *tmp;
+	wl_list_for_each_safe(wo, tmp, &wlouts, link) {
+		if (wo->name != name)
+			continue;
+		wl_output_release(wo->wo);
+		free(wo->desc);
+		free(wo->conn);
+		wl_list_remove(&wo->link);
+		free(wo);
+	}
+}
 
 static const struct wl_registry_listener reg_listener = {
 	.global = reg_global,
@@ -1248,6 +1355,7 @@ int main(void)
 	wl_list_init(&windows);
 	wl_list_init(&outputs);
 	wl_list_init(&seats);
+	wl_list_init(&wlouts);
 
 	struct wl_registry *reg = wl_display_get_registry(display);
 	wl_registry_add_listener(reg, &reg_listener, NULL);
