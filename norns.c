@@ -159,6 +159,24 @@ static void bsp_insert(struct node **root, struct win *w, struct win *near)
 	leaf->parent = t;
 }
 
+/* Wstawia okno obok okna t: podział w zadanym kierunku, nowe przed albo za t. */
+static void bsp_insert_at(struct win *w, struct win *t, bool horiz, bool before)
+{
+	struct node *leaf = calloc(1, sizeof *leaf), *n = t->leaf;
+	struct node *old = calloc(1, sizeof *old);
+	leaf->win = w;
+	w->leaf = leaf;
+	*old = *n;                      /* t schodzi piętro niżej */
+	old->parent = n;
+	t->leaf = old;
+	n->win = NULL;
+	n->side_by_side = horiz;
+	n->ratio = 0.5f;
+	n->a = before ? leaf : old;
+	n->b = before ? old : leaf;
+	leaf->parent = n;
+}
+
 /* Usuwa okno; rodzeństwo zajmuje miejsce rodzica. Zwraca ten węzeł. */
 static struct node *bsp_remove(struct node **root, struct win *w)
 {
@@ -350,6 +368,49 @@ static void swap_wins(struct win *a, struct win *b)
 	bars_dirty = true;
 }
 
+static struct output *output_at(int x, int y)
+{
+	struct output *o;
+	wl_list_for_each(o, &outputs, link)
+		if (x >= o->x && x < o->x + o->w && y >= o->y && y < o->y + o->h)
+			return o;
+	return NULL;
+}
+
+/* Upuszczenie kafla w (x, y): środek innego kafla — zamiana, pas przy jego
+ * krawędzi — wstawienie obok, pusta przestrzeń innego monitora — przeniesienie. */
+static void drop_tile(struct win *w, int x, int y)
+{
+	struct win *t = tile_at(x, y, w);
+	if (t) {
+		struct node *n = t->leaf;
+		float fx = (float)(x - n->x) / n->w, fy = (float)(y - n->y) / n->h;
+		/* odległość od najbliższej krawędzi, 0 = na krawędzi, 0.5 = środek */
+		float dl = fx, dr = 1 - fx, du = fy, dd = 1 - fy;
+		float m = dl < dr ? dl : dr, mv = du < dd ? du : dd;
+		if ((m < mv ? m : mv) >= 0.25f) {
+			swap_wins(w, t);
+			return;
+		}
+		struct output *to = t->out;
+		int tag = t->tag;
+		detach(w);                      /* t->leaf jest aktualizowany przez bsp_remove */
+		w->out = to;
+		w->tag = tag;
+		if (m < mv)
+			bsp_insert_at(w, t, true, dl < dr);
+		else
+			bsp_insert_at(w, t, false, du < dd);
+		bars_dirty = true;
+		return;
+	}
+	struct output *o = output_at(x, y);
+	if (o && (o != w->out || !o->roots[o->tag] || o->tag != w->tag)) {
+		detach(w);
+		attach(w, o, o->tag);
+	}
+}
+
 static float clamp_ratio(float r)
 {
 	return r < 0.1f ? 0.1f : r > 0.9f ? 0.9f : r;
@@ -441,10 +502,8 @@ static void op_manage(void)
 	if (!op.released)
 		return;
 	if (w && op.kind == OP_MOVE && !w->floating) {
-		struct win *t = tile_at(ptr_x, ptr_y, w);
 		w->drag_dx = w->drag_dy = 0;
-		if (t)
-			swap_wins(w, t);
+		drop_tile(w, ptr_x, ptr_y);
 	}
 	if (w && op.kind == OP_RESIZE && w->floating)
 		river_window_v1_inform_resize_end(w->rw);
