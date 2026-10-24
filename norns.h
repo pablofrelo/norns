@@ -87,6 +87,7 @@ struct output {
 	int off_x;                      /* od tego x klik otwiera menu wyłączania */
 	int menu_x[5];                  /* granice opcji menu na pasku */
 	int tray_x0, tray_slot;         /* zasobnik na pasku (piksele bufora) */
+	struct fx *fx;                  /* warstwa efektów trybu Nostromo (nostromo.c) */
 };
 
 struct win {
@@ -165,6 +166,16 @@ void anim_tag_switch(struct output *o, int from, int to);
 void anim_render_window(struct win *w, uint64_t now);   /* tylko w sekwencji render */
 bool anim_busy(uint64_t now);
 
+/* nostromo.c — tryb Nostromo (Super+Ctrl+A) */
+extern bool nostromo_on;
+void nostromo_init(void);
+void nostromo_toggle(void);
+void nostromo_tick(bool fullscreen_visible);            /* co 2 s z pętli */
+void nostromo_render(uint64_t now);                     /* w sekwencji render, na końcu */
+bool nostromo_busy(uint64_t now);
+int nostromo_jitter(const struct win *w, uint64_t now);
+void nostromo_output_fini(struct output *o);
+
 /* deco.c */
 void deco_init(struct win *w);
 void deco_fini(struct win *w);
@@ -210,7 +221,7 @@ void tray_click(int i, int button, int x, int y);   /* 1 lewy, 2 środkowy, 3 pr
 /* ---------- skróty i reguły (definicje w config.h) ---------- */
 
 enum action { SPAWN, CLOSE, QUIT, VIEW, SEND_TAG, FOCUS_OUT, SEND_OUT, THEME_TOGGLE, FLOAT_TOGGLE,
-              ANIM_TOGGLE, FULLSCREEN_TOGGLE, VOLUME, FOCUS_DIR, SWAP_DIR };
+              ANIM_TOGGLE, FULLSCREEN_TOGGLE, VOLUME, FOCUS_DIR, SWAP_DIR, NOSTROMO_TOGGLE };
 enum { LEFT, DOWN, UP, RIGHT };
 
 struct key {

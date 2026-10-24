@@ -725,6 +725,9 @@ static void run(const struct key *k)
 		if (focused)
 			focused->fs_want = focused->fullscreen ? 2 : 1;
 		break;
+	case NOSTROMO_TOGGLE:
+		nostromo_toggle();
+		break;
 	case ANIM_TOGGLE:
 		anim_on = !anim_on;
 		river_window_manager_v1_manage_dirty(wm);
@@ -865,6 +868,7 @@ static void out_removed(void *data, struct river_output_v1 *ro)
 	wl_list_for_each(w, &windows, link)
 		if (w->out == o)
 			detach(w);
+	nostromo_output_fini(o);
 	urd_output_fini(o);
 	if (o->lo)
 		river_layer_shell_output_v1_destroy(o->lo);
@@ -1302,6 +1306,8 @@ static void wm_render_start(void *d, struct river_window_manager_v1 *m)
 		if (w->floating && w->parent && w->parent->fullscreen && visible(w))
 			river_node_v1_place_top(w->rn);
 
+	nostromo_render(now);                   /* warstwa efektów na samej górze */
+
 	anim_want = anim_busy(now);
 	river_window_manager_v1_render_finish(wm);
 }
@@ -1481,6 +1487,7 @@ int main(void)
 	load_theme();
 	if (!urd_init())
 		return 1;
+	nostromo_init();
 	run_theme_script();         /* otwarte foote dostają paletę zapamiętanego motywu */
 
 	/* xkb i layer shell przed wm: eventy output/seat od razu ich używają */
@@ -1534,6 +1541,12 @@ int main(void)
 				continue;
 			sensors_update();
 			urd_redraw_bars();
+			bool fs = false;
+			struct win *fw;
+			wl_list_for_each(fw, &windows, link)
+				if (fw->fullscreen && visible(fw))
+					fs = true;
+			nostromo_tick(fs);
 		}
 
 		if (fds[4].revents & POLLIN)

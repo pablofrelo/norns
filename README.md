@@ -70,10 +70,21 @@ the source directory and falls back to rhine when it exits.
 | Super+Ctrl+F | toggle fullscreen |
 | Super+T | switch theme |
 | Super+A | animations on/off |
+| Super+Ctrl+A | Nostromo mode on/off (with a demo / a CRT switch-off) |
 | Super+left drag | move (floating) / swap or insert (tiles) |
 | Super+right drag | resize (floating) / move split (tiles) |
 | volume keys | volume via wpctl |
 | Super+Esc | quit norns (river keeps running) |
+
+## Nostromo mode
+
+Super+Ctrl+A. Every half hour the screen glitches like an old CRT with a short
+buzz; on the hour it also plays radio static and a garbled transmission. Put
+your own recordings (WAV, 16-bit or float) in `~/.local/share/norns/radio/` —
+norns band-limits, overdrives and chops them into a radio voice itself and
+plays a random one through `pw-play`. Skipped while a window is fullscreen or
+when animations are off. Window contents are not cut into bands — a window
+manager cannot see their pixels — so windows jitter under an overlay instead.
 
 ## Configuration
 

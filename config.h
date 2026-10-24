@@ -74,6 +74,7 @@ static const struct key keys[] = {
 	{ SUPER,        XKB_KEY_t,      THEME_TOGGLE, 0, NULL },
 	{ SUPER,        XKB_KEY_f,      FLOAT_TOGGLE, 0, NULL },
 	{ SUPER,        XKB_KEY_a,      ANIM_TOGGLE,  0, NULL },  /* efekty wł./wył. */
+	{ SUPER | CTRL, XKB_KEY_a,      NOSTROMO_TOGGLE, 0, NULL },  /* tryb Nostromo */
 	{ SUPER | CTRL, XKB_KEY_f,      FULLSCREEN_TOGGLE, 0, NULL },
 	{ SUPER,        XKB_KEY_h,      FOCUS_DIR, LEFT,  NULL },
 	{ SUPER,        XKB_KEY_j,      FOCUS_DIR, DOWN,  NULL },
