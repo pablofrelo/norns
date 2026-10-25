@@ -75,7 +75,10 @@ const struct theme themes[] = {
 
 static const char *const browser[] = { "firefox", NULL };
 static const char *const files[] = { "dolphin", NULL };
-static const char *const hadley[] = { "/bin/sh", "-c", "exec \"$HOME/.local/bin/hadley\"", NULL };
+/* HADLEY: włącza, a gdy już działa — wyłącza (po nazwie procesu, nie po linii poleceń,
+ * żeby pgrep nie złapał samego sh) */
+static const char *const hadley[] = { "/bin/sh", "-c",
+	"if pgrep -x hadley >/dev/null; then pkill -x hadley; else exec \"$HOME/.local/bin/hadley\"; fi", NULL };
 static const char *const vol_up[] = { "wpctl", "set-volume", "-l", "1.0", "@DEFAULT_AUDIO_SINK@", "5%+", NULL };
 static const char *const vol_down[] = { "wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-", NULL };
 static const char *const vol_mute[] = { "wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle", NULL };
@@ -136,7 +139,7 @@ static const char *const help_lines[] = {
 	"Super+`               terminal wysuwany od dołu (to samo chowa)",
 	"Super+D               uruchom program",
 	"Super+B / E           przeglądarka / pliki",
-	"Super+Shift+H         HADLEY (kamery)",
+	"Super+Shift+H         HADLEY (kamery) wł./wył.",
 	"Super+Q               zamknij okno",
 	"Super+H J K L         fokus w lewo/dół/górę/prawo (też między monitorami)",
 	"Super+Ctrl+H J K L    zamień okno z sąsiadem",
