@@ -92,7 +92,7 @@ struct output {
 	int tray_x0, tray_slot;         /* zasobnik na pasku (piksele bufora) */
 	struct fx *fx;                  /* warstwa efektów trybu Nostromo (nostromo.c) */
 	struct fx *crt;                 /* stałe linie kineskopu w trybie Nostromo */
-	struct surf note;               /* powiadomienia (urd.c rysuje, notify.c trzyma treść) */
+	struct surf note;               /* powiadomienia (urd.c rysuje, verdandi.c trzyma treść) */
 	struct surf menu;               /* menu aplikacji z zasobnika */
 	bool menu_shown;
 	int menu_rowh, menu_pad;        /* wysokość wiersza i margines (piksele bufora) */
@@ -264,7 +264,7 @@ void tmenu_rows(void);               /* przelicz widoczne wiersze */
 void tmenu_activate(int row);        /* klik w wiersz */
 void tmenu_close(void);
 
-/* ---------- powiadomienia (notify.c) ---------- */
+/* ---------- powiadomienia: verdandi (verdandi.c) ---------- */
 
 #define NOTE_MAX 4
 struct note {

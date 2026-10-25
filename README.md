@@ -26,7 +26,7 @@ and used daily on my own machine.
   battery, volume, system tray (StatusNotifierItem: left click activates, middle
   is the secondary action, right click opens the application's menu — drawn by
   urd from com.canonical.dbusmenu, e.g. nm-applet's network list), clock, theme switch, power menu
-- built-in notification daemon (org.freedesktop.Notifications): notifications
+- verdandi, the built-in notification daemon (org.freedesktop.Notifications): notifications
   type themselves out at the top centre of every monitor; critical
   ones stay until clicked, a click runs the default action (if another daemon
   such as mako is already running, norns leaves it alone)

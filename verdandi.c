@@ -1,6 +1,7 @@
-// notify — demon powiadomień (org.freedesktop.Notifications) na magistrali zasobnika.
+// verdandi — demon powiadomień norns (org.freedesktop.Notifications) na magistrali zasobnika.
+// Verdandi to norna teraźniejszości — „to, co się dzieje”; urd (przeszłość) to pasek.
 //
-// Powiadomienia rysuje urd.c w prawym górnym rogu monitora z fokusem: tekst
+// Powiadomienia rysuje urd.c pośrodku u góry każdego monitora: tekst
 // wpisywany znak po znaku jak na terminalu MU/TH/UR. Zwykłe znikają same,
 // krytyczne wiszą do kliknięcia. Klik zamyka powiadomienie i uruchamia jego
 // domyślną akcję (np. otwiera rozmowę).
@@ -135,7 +136,7 @@ static int m_notify(sd_bus_message *m, void *ud, sd_bus_error *err)
 	n->t0 = now_ms();
 	n->expire = urgency == 2 || timeout == 0 ? 0 :             /* czas na czytanie liczy się po wypisaniu */
 	            n->t0 + note_type_ms(note_chars(n)) + (timeout > 0 ? timeout : NOTE_MS);
-	fprintf(stderr, "norns: powiadomienie %u od %s\n", n->id, n->app);
+	fprintf(stderr, "verdandi: powiadomienie %u od %s\n", n->id, n->app);
 	char all[sizeof n->summary + sizeof n->body];
 	snprintf(all, sizeof all, "%s%s", n->summary, n->body);    /* w tej kolejności się pisze */
 	sfx_typing(all, note_type_ms(note_chars(n)));
@@ -168,7 +169,7 @@ static int m_caps(sd_bus_message *m, void *ud, sd_bus_error *err)
 
 static int m_info(sd_bus_message *m, void *ud, sd_bus_error *err)
 {
-	return sd_bus_reply_method_return(m, "ssss", "norns", "norns", "0.1", "1.2");
+	return sd_bus_reply_method_return(m, "ssss", "verdandi", "norns", "0.1", "1.2");
 }
 
 static const sd_bus_vtable note_vtable[] = {
@@ -189,17 +190,17 @@ void notify_init(sd_bus *b)
 {
 	int r = sd_bus_add_object_vtable(b, NULL, NOTE_PATH, NOTE_IFACE, note_vtable, NULL);
 	if (r < 0) {
-		fprintf(stderr, "norns: powiadomienia — błąd rejestracji: %s\n", strerror(-r));
+		fprintf(stderr, "verdandi: powiadomienia — błąd rejestracji: %s\n", strerror(-r));
 		return;
 	}
 	bus = b;
 	r = sd_bus_request_name(b, NOTE_IFACE, SD_BUS_NAME_QUEUE);
 	if (r < 0)
-		fprintf(stderr, "norns: powiadomienia — błąd: %s\n", strerror(-r));
+		fprintf(stderr, "verdandi: powiadomienia — błąd: %s\n", strerror(-r));
 	else if (r > 0)
-		fprintf(stderr, "norns: powiadomienia — jestem demonem\n");
+		fprintf(stderr, "verdandi: powiadomienia — jestem demonem\n");
 	else
-		fprintf(stderr, "norns: powiadomienia — działa inny demon (mako, dunst?), "
+		fprintf(stderr, "verdandi: powiadomienia — działa inny demon (mako, dunst?), "
 		                "czekam w kolejce, aż się zakończy\n");
 }
 
