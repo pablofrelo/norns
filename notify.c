@@ -178,15 +178,25 @@ static const sd_bus_vtable note_vtable[] = {
 	SD_BUS_VTABLE_END,
 };
 
+/* Nazwę zajmujemy w kolejce: jeśli działa już mako albo dunst, przejmiemy
+ * powiadomienia, gdy tylko tamten się zakończy (np. systemctl --user stop mako),
+ * a D-Bus nie uruchomi go ponownie, bo nazwa ma właściciela. */
 void notify_init(sd_bus *b)
 {
-	if (sd_bus_add_object_vtable(b, NULL, NOTE_PATH, NOTE_IFACE, note_vtable, NULL) < 0 ||
-	    sd_bus_request_name(b, NOTE_IFACE, 0) < 0) {
-		fprintf(stderr, "norns: powiadomienia — działa już inny demon (mako, dunst?)\n");
+	int r = sd_bus_add_object_vtable(b, NULL, NOTE_PATH, NOTE_IFACE, note_vtable, NULL);
+	if (r < 0) {
+		fprintf(stderr, "norns: powiadomienia — błąd rejestracji: %s\n", strerror(-r));
 		return;
 	}
 	bus = b;
-	fprintf(stderr, "norns: powiadomienia — jestem demonem\n");
+	r = sd_bus_request_name(b, NOTE_IFACE, SD_BUS_NAME_QUEUE);
+	if (r < 0)
+		fprintf(stderr, "norns: powiadomienia — błąd: %s\n", strerror(-r));
+	else if (r > 0)
+		fprintf(stderr, "norns: powiadomienia — jestem demonem\n");
+	else
+		fprintf(stderr, "norns: powiadomienia — działa inny demon (mako, dunst?), "
+		                "czekam w kolejce, aż się zakończy\n");
 }
 
 /* Co 2 s z pętli: przeterminowane znikają. */
