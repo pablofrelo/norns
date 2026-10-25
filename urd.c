@@ -782,7 +782,7 @@ static void draw_notes(struct output *o, pixman_image_t *img, int w, int h)
 		int ex = text(img, x0, ty, lh, w - 2 * PAD, "> ", t->dim);
 		text(img, ex, ty, lh, w - 2 * PAD, app, t->dim);
 
-		size_t len = strlen(n->summary) + strlen(n->body);
+		size_t len = note_chars(n);
 		int tms = note_type_ms(len);
 		int vis = now >= n->t0 + tms ? -1 : (int)((now - n->t0) * (len + 1) / (tms ? tms : 1));
 		struct lines L;

@@ -324,6 +324,54 @@ static void play_file(const char *name, float vol)
 	play(cmd);
 }
 
+/* Stukot klawiszy do powiadomienia: jeden klik na każdy pisany znak (spacje
+ * cicho), w tym samym tempie co tekst na ekranie. */
+void sfx_typing(const char *text, int ms)
+{
+	int chars = 0;
+	for (const char *p = text; *p; p++)
+		if ((*p & 0xc0) != 0x80)
+			chars++;
+	if (chars == 0 || ms <= 0 || !*dir)
+		return;
+	int n = RATE * (ms + 80) / 1000;
+	float *x = calloc(n, sizeof *x);
+	uint32_t s = (uint32_t)now_ms() | 1;
+	struct biquad bp_hi = bq(RATE, 1800, true), bp_lo = bq(RATE, 5200, false);
+	int k = 0;
+	for (const char *p = text; *p; p++) {
+		if ((*p & 0xc0) == 0x80)
+			continue;
+		int at = (int)((int64_t)k++ * ms / chars * RATE / 1000);
+		if (*p == ' ' || *p == '\n')
+			continue;
+		at += (int)(frand(&s) * RATE * 0.004f);                  /* nierówna ręka */
+		float amp = 0.55f + 0.25f * frand(&s), tone = 0.8f + 0.2f * frand(&s);
+		int len = RATE * 12 / 1000;
+		for (int i = 0; i < len && at + i < n; i++) {
+			if (at + i < 0)
+				continue;
+			float t = (float)i / RATE, env = expf(-t * 900);       /* trzask ~3 ms */
+			float thump = expf(-t * 300) * sinf(2 * (float)M_PI * 180 * tone * t);
+			x[at + i] += amp * (env * frand(&s) + 0.35f * thump);
+		}
+	}
+	float peak = 0.01f;
+	for (int i = 0; i < n; i++) {                               /* bez brzęczenia i dudnienia */
+		x[i] = bq_run(&bp_lo, bq_run(&bp_hi, x[i]));
+		peak = fmaxf(peak, fabsf(x[i]));
+	}
+	for (int i = 0; i < n; i++)
+		x[i] *= 0.7f / peak;
+	char path[300], cmd[400];
+	sound_path(path, sizeof path, "keys.wav");
+	if (wav_write(path, x, n, RATE)) {
+		snprintf(cmd, sizeof cmd, "pw-play --volume 0.5 '%s'", path);
+		play(cmd);
+	}
+	free(x);
+}
+
 /* ---------- warstwa efektów nad ekranem ---------- */
 
 struct fx {

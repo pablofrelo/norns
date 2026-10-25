@@ -133,8 +133,12 @@ static int m_notify(sd_bus_message *m, void *ud, sd_bus_error *err)
 	n->urgency = urgency;
 	n->has_default = has_default;
 	n->t0 = now_ms();
-	n->expire = urgency == 2 || timeout == 0 ? 0 : n->t0 + (timeout > 0 ? timeout : NOTE_MS);
+	n->expire = urgency == 2 || timeout == 0 ? 0 :             /* czas na czytanie liczy się po wypisaniu */
+	            n->t0 + note_type_ms(note_chars(n)) + (timeout > 0 ? timeout : NOTE_MS);
 	fprintf(stderr, "norns: powiadomienie %u od %s\n", n->id, n->app);
+	char all[sizeof n->summary + sizeof n->body];
+	snprintf(all, sizeof all, "%s%s", n->summary, n->body);    /* w tej kolejności się pisze */
+	sfx_typing(all, note_type_ms(note_chars(n)));
 	changed();
 	return sd_bus_reply_method_return(m, "u", n->id);
 }
@@ -212,11 +216,20 @@ void notify_tick(void)
 bool notify_busy(uint64_t now)
 {
 	for (int i = 0; i < notes_n; i++) {
-		size_t len = strlen(notes[i].summary) + strlen(notes[i].body);
-		if (now < notes[i].t0 + note_type_ms(len))
+		if (now < notes[i].t0 + note_type_ms(note_chars(&notes[i])))
 			return true;
 	}
 	return false;
+}
+
+size_t note_chars(const struct note *n)
+{
+	size_t k = 0;
+	for (const char *p = n->summary; *p; p++)
+		k += (*p & 0xc0) != 0x80;
+	for (const char *p = n->body; *p; p++)
+		k += (*p & 0xc0) != 0x80;
+	return k;
 }
 
 int note_type_ms(size_t chars)

@@ -16,8 +16,8 @@
 #define NOTE_W        640           /* szerokość powiadomienia (logiczne px) */
 #define NOTE_FONT     150           /* font powiadomień: % fontu paska (Spleen 16 → 24) */
 #define NOTE_MS       6000          /* jak długo wisi zwykłe powiadomienie */
-#define NOTE_CHAR_MS  12            /* tempo „pisania” tekstu */
-#define NOTE_TYPE_MAX 900           /* ale całość najwyżej tyle ms */
+#define NOTE_CHAR_MS  40            /* tempo „pisania” tekstu (ms na znak) */
+#define NOTE_TYPE_MAX 3500          /* ale całość najwyżej tyle ms */
 
 #endif /* NORNS_CONFIG_CONSTS */
 

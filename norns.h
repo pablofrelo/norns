@@ -182,6 +182,7 @@ void nostromo_render(uint64_t now);                     /* w sekwencji render, n
 bool nostromo_busy(uint64_t now);
 int nostromo_jitter(const struct win *w, uint64_t now);
 void nostromo_output_fini(struct output *o);
+void sfx_typing(const char *text, int ms);              /* stukot klawiszy do powiadomienia */
 
 /* deco.c */
 void deco_init(struct win *w);
@@ -243,6 +244,7 @@ void notify_tick(void);
 bool notify_busy(uint64_t now);
 void notify_click(int i);
 int note_type_ms(size_t chars);
+size_t note_chars(const struct note *n);   /* znaki (nie bajty) tytułu i treści */
 struct output *focus_output(void);   /* norns.c: monitor z fokusem (albo pod kursorem) */
 
 /* ---------- skróty i reguły (definicje w config.h) ---------- */
