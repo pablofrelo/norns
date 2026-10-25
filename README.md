@@ -56,10 +56,14 @@ window manager if norns exits:
     #!/bin/sh
     kanshi &
     ~/.local/bin/norns >/tmp/norns.log 2>&1
-    exec rhine
+    exec rhine          # or any other river window manager you have
 
 While hacking, `./run.sh` swaps the running window manager for `./norns` from
-the source directory and falls back to rhine when it exits.
+the source directory. When it exits, the window manager named in
+`NORNS_FALLBACK` takes over (rhine by default, if installed), so the session
+survives a crash:
+
+    NORNS_FALLBACK=my-other-wm ./run.sh
 
 ## Keys
 
