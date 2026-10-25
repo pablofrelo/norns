@@ -75,6 +75,7 @@ const struct theme themes[] = {
 
 static const char *const browser[] = { "firefox", NULL };
 static const char *const files[] = { "dolphin", NULL };
+static const char *const hadley[] = { "/bin/sh", "-c", "exec \"$HOME/.local/bin/hadley\"", NULL };
 static const char *const vol_up[] = { "wpctl", "set-volume", "-l", "1.0", "@DEFAULT_AUDIO_SINK@", "5%+", NULL };
 static const char *const vol_down[] = { "wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-", NULL };
 static const char *const vol_mute[] = { "wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle", NULL };
@@ -100,6 +101,8 @@ static const struct key keys[] = {
 	{ SUPER,        XKB_KEY_d,      SPAWN,     1, NULL },  /* 1 = uruchamianie programów motywu */
 	{ SUPER,        XKB_KEY_b,      SPAWN,     0, browser },
 	{ SUPER,        XKB_KEY_e,      SPAWN,     0, files },
+	{ SUPER | SHIFT, XKB_KEY_h,     SPAWN,     0, hadley },  /* h i H: zależnie od tego, */
+	{ SUPER | SHIFT, XKB_KEY_H,     SPAWN,     0, hadley },  /* jak river poda Shift */
 	{ SUPER,        XKB_KEY_q,      CLOSE,     0, NULL },
 	{ SUPER,        XKB_KEY_Escape, QUIT,      0, NULL },  /* wyjście z norns, nie z rivera */
 	{ SUPER,        XKB_KEY_t,      THEME_TOGGLE, 0, NULL },
@@ -133,6 +136,7 @@ static const char *const help_lines[] = {
 	"Super+`               terminal wysuwany od dołu (to samo chowa)",
 	"Super+D               uruchom program",
 	"Super+B / E           przeglądarka / pliki",
+	"Super+Shift+H         HADLEY (kamery)",
 	"Super+Q               zamknij okno",
 	"Super+H J K L         fokus w lewo/dół/górę/prawo (też między monitorami)",
 	"Super+Ctrl+H J K L    zamień okno z sąsiadem",
