@@ -79,6 +79,8 @@ static const char *const vol_mute[] = { "wpctl", "set-mute", "@DEFAULT_AUDIO_SIN
 
 static const struct key keys[] = {
 	{ SUPER,        XKB_KEY_Return, SPAWN,     0, NULL },  /* NULL = terminal motywu */
+	{ SUPER,        XKB_KEY_slash,  HELP,      0, NULL },  /* ściąga ze skrótami */
+	{ SUPER,        XKB_KEY_F1,     HELP,      0, NULL },
 	{ SUPER,        XKB_KEY_d,      SPAWN,     1, NULL },  /* 1 = uruchamianie programów motywu */
 	{ SUPER,        XKB_KEY_b,      SPAWN,     0, browser },
 	{ SUPER,        XKB_KEY_e,      SPAWN,     0, files },
@@ -108,6 +110,30 @@ static const struct key keys[] = {
 	TAGKEYS(6), TAGKEYS(7), TAGKEYS(8), TAGKEYS(9),
 };
 #define NKEYS (sizeof keys / sizeof keys[0])
+
+/* Ściąga (Super+/ albo Super+F1) — przy zmianie skrótów popraw też tutaj. */
+static const char *const help_lines[] = {
+	"Super+Return          terminal",
+	"Super+D               uruchom program",
+	"Super+B / E           przeglądarka / pliki",
+	"Super+Q               zamknij okno",
+	"Super+H J K L         fokus w lewo/dół/górę/prawo (też między monitorami)",
+	"Super+Ctrl+H J K L    zamień okno z sąsiadem",
+	"Super+1…9             pokaż tag (na monitorze z fokusem)",
+	"Super+Ctrl+1…9        wyślij okno na tag",
+	"Super+, / .           poprzedni / następny monitor",
+	"Super+Ctrl+, / .      wyślij okno na poprzedni / następny monitor",
+	"Super+F               okno pływające / kafel",
+	"Super+Ctrl+F          pełny ekran",
+	"Super+T               zmień motyw",
+	"Super+A               animacje wł./wył.",
+	"Super+Ctrl+A          tryb Nostromo",
+	"Super+lewy przycisk   przesuń / zamień kafle",
+	"Super+prawy przycisk  rozmiar / proporcje podziału",
+	"Super+Escape          wyjdź z norns",
+	"Super+/ albo F1       ta ściąga",
+	NULL
+};
 
 /* ---------- reguły ---------- */
 

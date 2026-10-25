@@ -59,6 +59,7 @@ the source directory and falls back to rhine when it exits.
 |---|---|
 | Super+Return | terminal (per theme) |
 | Super+D | app launcher (fuzzel, per theme) |
+| Super+/ or Super+F1 | shortcut cheat sheet (fuzzel) |
 | Super+B / Super+E | browser / file manager |
 | Super+Q | close window |
 | Super+H/J/K/L | focus left/down/up/right (across monitors) |

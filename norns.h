@@ -223,7 +223,8 @@ void tray_click(int i, int button, int x, int y);   /* 1 lewy, 2 środkowy, 3 pr
 /* ---------- skróty i reguły (definicje w config.h) ---------- */
 
 enum action { SPAWN, CLOSE, QUIT, VIEW, SEND_TAG, FOCUS_OUT, SEND_OUT, THEME_TOGGLE, FLOAT_TOGGLE,
-              ANIM_TOGGLE, FULLSCREEN_TOGGLE, VOLUME, FOCUS_DIR, SWAP_DIR, NOSTROMO_TOGGLE };
+              ANIM_TOGGLE, FULLSCREEN_TOGGLE, VOLUME, FOCUS_DIR, SWAP_DIR, NOSTROMO_TOGGLE,
+              HELP };
 enum { LEFT, DOWN, UP, RIGHT };
 
 struct key {

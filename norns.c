@@ -537,15 +537,16 @@ static void spawn(const char *const *cmd)
 	}
 }
 
-/* Uruchamianie programów na monitorze z fokusem (fuzzel bez --output wybiera sam). */
-static void spawn_run(void)
+/* Fuzzel motywu na monitorze z fokusem (bez --output wybiera sam);
+ * help = ściąga ze skrótami w trybie --dmenu, czytana ze stdin. */
+static void spawn_run(bool help)
 {
-	const char *argv[32];
+	const char *argv[40];
 	int n = 0;
 	for (const char *const *a = THEME->run; *a && n < 30; a++)
 		argv[n++] = *a;
+	char opt[80], lines[32];
 	struct output *o = focused && focused->out ? focused->out : active_output();
-	char opt[80];
 	struct wlout *wo;
 	if (o)
 		wl_list_for_each(wo, &wlouts, link)
@@ -554,8 +555,45 @@ static void spawn_run(void)
 				argv[n++] = opt;
 				break;
 			}
+	int nl = 0;
+	if (help) {
+		while (help_lines[nl])
+			nl++;
+		snprintf(lines, sizeof lines, "--lines=%d", nl);
+		argv[n++] = "--dmenu";
+		argv[n++] = "--prompt=SKRÓTY  ";
+		argv[n++] = "--width=72";
+		argv[n++] = lines;
+	}
 	argv[n] = NULL;
-	spawn(argv);
+	int fds[2] = { -1, -1 };
+	if (help && pipe(fds) < 0)
+		return;
+	pid_t pid = fork();
+	if (pid == 0) {
+		setsid();
+		int fd = open("/dev/null", O_RDWR);
+		if (fd >= 0) {
+			dup2(help ? fds[0] : fd, STDIN_FILENO);
+			dup2(fd, STDOUT_FILENO);
+			dup2(fd, STDERR_FILENO);
+			close(fd);
+		}
+		if (help) {
+			close(fds[0]);
+			close(fds[1]);
+		}
+		execvp(argv[0], (char *const *)argv);
+		_exit(1);
+	}
+	if (!help)
+		return;
+	close(fds[0]);
+	if (pid > 0)
+		for (int i = 0; i < nl; i++)        /* kilka linii mieści się w buforze rury */
+			if (write(fds[1], help_lines[i], strlen(help_lines[i])) < 0 || write(fds[1], "\n", 1) < 0)
+				break;
+	close(fds[1]);
 }
 
 /* ---------- akcje wołane też z paska ---------- */
@@ -665,7 +703,7 @@ static void run(const struct key *k)
 	switch (k->act) {
 	case SPAWN:
 		if (!k->cmd && k->arg)
-			spawn_run();
+			spawn_run(false);
 		else
 			spawn(k->cmd ? k->cmd : THEME->term);
 		break;
@@ -748,6 +786,9 @@ static void run(const struct key *k)
 	case FULLSCREEN_TOGGLE:
 		if (focused)
 			focused->fs_want = focused->fullscreen ? 2 : 1;
+		break;
+	case HELP:
+		spawn_run(true);
 		break;
 	case NOSTROMO_TOGGLE:
 		nostromo_toggle();
@@ -1487,6 +1528,7 @@ static const struct wl_registry_listener reg_listener = {
 int main(void)
 {
 	signal(SIGCHLD, SIG_IGN);   /* dzieci (terminal itp.) nie zostają zombie */
+	signal(SIGPIPE, SIG_IGN);   /* ściąga: fuzzel zamknięty przed zapisem nie może zabić WM */
 	setlocale(LC_CTYPE, "");    /* UTF-8 w tytułach okien */
 
 	display = wl_display_connect(NULL);
