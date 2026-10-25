@@ -26,7 +26,7 @@ and used daily on my own machine.
   battery, volume, system tray (StatusNotifierItem: left click activates, middle
   is the secondary action), clock, theme switch, power menu
 - built-in notification daemon (org.freedesktop.Notifications): notifications
-  type themselves out in the top-right corner of the focused monitor; critical
+  type themselves out at the top centre of every monitor; critical
   ones stay until clicked, a click runs the default action (if another daemon
   such as mako is already running, norns leaves it alone)
 - MU/TH/UR: green glow around the focused window, twinkling stars, a comet now

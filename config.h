@@ -13,7 +13,8 @@
 #define SLIDE_MS  140               /* ślizg przy zmianie tagu */
 #define MOVE_MS   120               /* dojazd okna na nowe miejsce */
 #define OPEN_MS   160               /* otwieranie okna (kineskop) */
-#define NOTE_W        420           /* szerokość powiadomienia (logiczne px) */
+#define NOTE_W        640           /* szerokość powiadomienia (logiczne px) */
+#define NOTE_FONT     150           /* font powiadomień: % fontu paska (Spleen 16 → 24) */
 #define NOTE_MS       6000          /* jak długo wisi zwykłe powiadomienie */
 #define NOTE_CHAR_MS  12            /* tempo „pisania” tekstu */
 #define NOTE_TYPE_MAX 900           /* ale całość najwyżej tyle ms */

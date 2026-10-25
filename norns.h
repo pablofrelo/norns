@@ -68,6 +68,7 @@ struct surf {                       /* powierzchnia rysowana przez norns */
 	int scale120;                   /* skala * 120 (120 = 1,0; 150 = 1,25) */
 	int drawn_scale;
 	bool alpha;                     /* bufor z przezroczystością */
+	int font_pct;                   /* font względem paska; 0 = 100% */
 };
 
 struct output {

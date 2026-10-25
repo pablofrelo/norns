@@ -615,6 +615,7 @@ void urd_output_init(struct output *o)
 	surf_init(&o->wall, o, false);
 	surf_init(&o->note, o, true);
 	o->note.alpha = true;                  /* przerwy między powiadomieniami przezroczyste */
+	o->note.font_pct = NOTE_FONT;
 }
 
 void urd_output_fini(struct output *o)
@@ -643,7 +644,7 @@ static void surf_draw(struct surf *s, struct output *o, bool sync,
 	struct buf *b = buf_new(bw, bh, s->alpha, false);
 	if (!b)
 		return;
-	font = font_at(scale);
+	font = font_at(scale * (s->font_pct ? s->font_pct : 100) / 100);
 	PAD = PAD_BASE * scale / 120;
 	draw(o, b->img, bw, bh);
 	font = fonts[theme_idx];
@@ -799,19 +800,26 @@ static void draw_notes(struct output *o, pixman_image_t *img, int w, int h)
 	o->note_y[notes_n] = y;
 }
 
-/* Wysokość całego stosu (logiczne px), liczona fontem skali 1. */
-static int notes_height(void)
+/* Wysokość całego stosu w logicznych px — liczona tym fontem i w tej skali,
+ * w której powiadomienia będą narysowane, żeby nic nie ucięło dołu. */
+static int notes_height(int scale)
 {
-	int y = 0;
+	font = font_at(scale * NOTE_FONT / 100);
+	PAD = PAD_BASE * scale / 120;
+	int bw = (NOTE_W * scale + 60) / 120, gap = GAP * PAD / PAD_BASE / 2, y = 0;
 	for (int i = 0; i < notes_n; i++)
-		y += note_height(&notes[i], NOTE_W) + GAP / 2;
-	return y > 0 ? y - GAP / 2 : 0;
+		y += note_height(&notes[i], bw) + gap;
+	if (y > 0)
+		y -= gap;
+	font = fonts[theme_idx];
+	PAD = PAD_BASE;
+	return (y * 120 + scale - 1) / scale;
 }
 
 static void notes_render(struct output *o)
 {
 	struct surf *s = &o->note;
-	bool here = notes_n > 0 && o == focus_output();
+	bool here = notes_n > 0;                                  /* na każdym monitorze */
 	if (!here) {
 		if (o->note_shown) {                                  /* schowaj: pusty bufor */
 			river_shell_surface_v1_sync_next_commit(s->ss);
@@ -823,8 +831,8 @@ static void notes_render(struct output *o)
 		return;
 	}
 	s->w = NOTE_W;
-	s->h = notes_height();
-	s->x = o->x + o->w - NOTE_W - GAP;
+	s->h = notes_height(s->vp ? s->scale120 : 120);
+	s->x = o->x + (o->w - NOTE_W) / 2;                        /* pośrodku u góry */
 	s->y = o->bar.y + o->bar.h + GAP;
 	if (notify_busy(now_ms()) || !o->note_shown)
 		s->dirty = true;
