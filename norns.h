@@ -119,6 +119,7 @@ struct win {
 	int fs_want;                    /* 0 nic, 1 wejdź, 2 wyjdź — wykonywane w manage */
 	struct output *fs_out;          /* monitor, o który prosiło okno */
 	bool dragging;                  /* łapane myszą: bez animacji dojazdu */
+	bool drop, hidden, hiding;      /* terminal wysuwany (Super+`): schowany / chowa się */
 	int drag_dx, drag_dy;           /* kafel niesiony za kursorem */
 
 	/* animacja (anim.c) */
@@ -137,7 +138,7 @@ struct win {
 
 static inline bool win_visible(const struct win *w)
 {
-	return w->out && w->tag == w->out->tag;
+	return w->out && !w->hidden && w->tag == w->out->tag;
 }
 
 /* ---------- sensory (sensors.c) ---------- */
@@ -251,7 +252,7 @@ struct output *focus_output(void);   /* norns.c: monitor z fokusem (albo pod kur
 
 enum action { SPAWN, CLOSE, QUIT, VIEW, SEND_TAG, FOCUS_OUT, SEND_OUT, THEME_TOGGLE, FLOAT_TOGGLE,
               ANIM_TOGGLE, FULLSCREEN_TOGGLE, VOLUME, FOCUS_DIR, SWAP_DIR, NOSTROMO_TOGGLE,
-              HELP };
+              HELP, DROP_TOGGLE };
 enum { LEFT, DOWN, UP, RIGHT };
 
 struct key {

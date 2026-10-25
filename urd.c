@@ -207,7 +207,7 @@ static void draw_bar(struct output *o, pixman_image_t *img, int w, int h)
 		bool busy = o->roots[i] != NULL;          /* kafle albo pływające */
 		struct win *wn;
 		wl_list_for_each(wn, &windows, link)
-			if (wn->out == o && wn->tag == i)
+			if (wn->out == o && wn->tag == i && !wn->hidden)
 				busy = true;
 		uint32_t fg = busy ? t->fg : t->dim;
 		if (i == o->tag) {

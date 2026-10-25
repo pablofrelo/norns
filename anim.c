@@ -159,7 +159,7 @@ void anim_render_window(struct win *w, uint64_t now)
 	} else {
 		w->open_t0 = 0;
 	}
-	if (slide)
+	if (slide || w->drop)                   /* terminal wysuwany nie wjeżdża na monitor wyżej */
 		ok = intersect(&cx, &cy, &cw, &ch, o->x, o->y, o->w, o->h);
 
 	if (!ok) {                          /* całkiem poza monitorem */

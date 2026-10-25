@@ -699,6 +699,86 @@ void toggle_theme(void)
 	river_window_manager_v1_manage_dirty(wm);
 }
 
+/* ---------- terminal wysuwany (Super+`) ---------- */
+
+static struct win *drop_win;
+static bool drop_spawning;
+
+/* Cel na monitorze: wyśrodkowany, tuż pod paskiem. */
+static void drop_place(struct win *w)
+{
+	struct output *o = w->out;
+	w->w = o->aw * DROP_W / 100;
+	w->h = o->ah * DROP_H / 100;
+	w->x = o->ax + (o->aw - w->w) / 2;
+	w->y = o->ay + GAP;
+}
+
+static int drop_offscreen_y(struct win *w)
+{
+	return w->out->y - w->h - 2 * (BORDER + w->deco_r) - 4;
+}
+
+/* Pokaż na monitorze o: zjeżdża z górnej krawędzi. */
+static void drop_show(struct win *w, struct output *o)
+{
+	if (w->out)
+		detach(w);
+	attach(w, o, o->tag);
+	w->hidden = w->hiding = false;
+	w->placed = true;
+	drop_place(w);
+	if (anim_on) {                      /* start nad monitorem, anim dowiezie na miejsce */
+		w->shown = true;
+		w->bx = w->tx = w->x;
+		w->by = w->ty = drop_offscreen_y(w);
+	}
+	set_focus(w);
+}
+
+static void drop_hide(struct win *w)
+{
+	struct output *o = w->out;
+	struct win *n, *next = NULL;
+	wl_list_for_each(n, &windows, link)
+		if (n != w && n->out == o && visible(n)) {
+			next = n;
+			break;
+		}
+	set_focus(next);
+	if (anim_on) {
+		w->y = drop_offscreen_y(w);     /* odjeżdża w górę, potem znika (render) */
+		w->hiding = true;
+	} else {
+		w->hidden = true;
+		bars_dirty = true;
+	}
+}
+
+static void drop_toggle(struct output *o)
+{
+	if (!o)
+		return;
+	if (!drop_win) {
+		if (drop_spawning)
+			return;
+		const char *argv[24];
+		int n = 0;
+		argv[n++] = THEME->term[0];
+		argv[n++] = "--app-id=" DROP_APP_ID;
+		for (const char *const *a = THEME->term + 1; *a && n < 22; a++)
+			argv[n++] = *a;
+		argv[n] = NULL;
+		drop_spawning = true;
+		spawn(argv);
+		return;
+	}
+	if (visible(drop_win) && drop_win->out == o && !drop_win->hiding)
+		drop_hide(drop_win);
+	else
+		drop_show(drop_win, o);
+}
+
 /* Wołane z eventu pressed — zmieniamy tylko nasze dane, requesty idą w manage. */
 static void run(const struct key *k)
 {
@@ -802,6 +882,10 @@ static void run(const struct key *k)
 		anim_on = !anim_on;
 		river_window_manager_v1_manage_dirty(wm);
 		break;
+	case DROP_TOGGLE:
+		drop_toggle(focus_output());
+		river_window_manager_v1_manage_dirty(wm);
+		break;
 	}
 }
 
@@ -810,6 +894,8 @@ static void run(const struct key *k)
 static void win_closed(void *data, struct river_window_v1 *rw)
 {
 	struct win *w = data;
+	if (w == drop_win)
+		drop_win = NULL;
 	if (w->leaf) {
 		struct node *p = bsp_remove(&w->out->roots[w->tag], w);
 		if (focused == w)
@@ -1155,6 +1241,16 @@ static void wm_manage_start(void *d, struct river_window_manager_v1 *m)
 			w->floating = should_float(w);
 			w->float_pending = w->floating ? 1 : 0;
 			w->tiled_dirty = true;
+			if (w->app_id && !strcmp(w->app_id, DROP_APP_ID) && !drop_win) {   /* terminal wysuwany */
+				w->floating = w->drop = true;
+				w->float_pending = 0;
+				drop_win = w;
+				drop_spawning = false;
+				w->fresh = false;
+				river_window_v1_use_ssd(w->rw);
+				drop_show(w, act);
+				continue;
+			}
 			if (popup.t && now_ms() - popup.t < 1500) {    /* menu z zasobnika */
 				w->floating = true;
 				w->float_pending = 3;               /* niech samo wybierze rozmiar */
@@ -1280,6 +1376,12 @@ static void wm_manage_start(void *d, struct river_window_manager_v1 *m)
 				w->pw = w->w;
 				w->ph = w->h;
 			}
+		} else if (w->drop) {
+			if (w->w != w->pw || w->h != w->ph) {
+				river_window_v1_propose_dimensions(w->rw, w->w, w->h);
+				w->pw = w->w;
+				w->ph = w->h;
+			}
 		} else if (w->float_pending == 1) {                  /* dialog: pół na pół rodzica */
 			int pw, ph;
 			dialog_size(w, &pw, &ph);
@@ -1334,7 +1436,12 @@ static void wm_render_start(void *d, struct river_window_manager_v1 *m)
 			w->x = ax + (aw - w->w) / 2;
 			w->y = ay + (ah - w->h) / 2;
 		}
-		if (visible(w) && w->floating && w->placed) {
+		if (w->drop && w->hiding && w->shown && !w->move_t0 && w->by == w->y) {
+			w->hiding = false;          /* odjechał — chowamy */
+			w->hidden = true;
+			bars_dirty = true;
+		}
+		if (visible(w) && w->floating && w->placed && !w->drop) {
 			w->w = w->dw;
 			w->h = w->dh;
 			/* nie wychodzi za monitor (menu z zasobnika przy prawej krawędzi) */
