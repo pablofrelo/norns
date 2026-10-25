@@ -613,12 +613,15 @@ void urd_output_init(struct output *o)
 {
 	surf_init(&o->bar, o, true);           /* pasek ostry przy skali ułamkowej */
 	surf_init(&o->wall, o, false);
+	surf_init(&o->note, o, true);
+	o->note.alpha = true;                  /* przerwy między powiadomieniami przezroczyste */
 }
 
 void urd_output_fini(struct output *o)
 {
 	surf_fini(&o->bar);
 	surf_fini(&o->wall);
+	surf_fini(&o->note);
 	if (o->sky) {
 		sky_free_bufs(o->sky);
 		free(o->sky->stars);
@@ -637,7 +640,7 @@ static void surf_draw(struct surf *s, struct output *o, bool sync,
 		return;
 	/* bufor w pikselach monitora, font i odstępy w tej samej skali */
 	int bw = (s->w * scale + 60) / 120, bh = (s->h * scale + 60) / 120;
-	struct buf *b = buf_new(bw, bh, false, false);
+	struct buf *b = buf_new(bw, bh, s->alpha, false);
 	if (!b)
 		return;
 	font = font_at(scale);
@@ -658,6 +661,179 @@ static void surf_draw(struct surf *s, struct output *o, bool sync,
 	s->dirty = false;
 }
 
+/* ---------- powiadomienia ---------- */
+
+#define NL 7                        /* najwyżej linii treści w jednym powiadomieniu */
+struct lines {
+	char l[NL][200];
+	uint32_t c[NL];
+	int n;
+};
+
+/* Pierwsze `max` znaków (kodów Unicode) napisu; zwraca ile zostało z budżetu. */
+static int take(char *dst, size_t n, const char *src, int max)
+{
+	const char *p = src;
+	int k = 0;
+	while (*p && k < max) {
+		next_cp(&p);
+		k++;
+	}
+	size_t len = (size_t)(p - src) < n - 1 ? (size_t)(p - src) : n - 1;
+	memcpy(dst, src, len);
+	dst[len] = 0;
+	return max - k;
+}
+
+static void add_line(struct lines *L, const char *s, size_t len, uint32_t c, int maxl)
+{
+	if (L->n >= maxl || L->n >= NL)
+		return;
+	if (len >= sizeof L->l[0])
+		len = sizeof L->l[0] - 1;
+	memcpy(L->l[L->n], s, len);
+	L->l[L->n][len] = 0;
+	L->c[L->n++] = c;
+}
+
+/* Zawijanie po słowach do szerokości maxw (w bieżącym foncie), \n łamie linię. */
+static void wrap(struct lines *L, const char *s, int maxw, uint32_t c, int maxl)
+{
+	char buf[200];
+	while (*s && L->n < maxl) {
+		const char *start = s, *last_fit = NULL;
+		size_t blen = 0;
+		while (*s && *s != '\n') {
+			const char *q = s;
+			next_cp(&q);
+			size_t nl = blen + (q - s);
+			if (nl >= sizeof buf)
+				break;
+			memcpy(buf + blen, s, q - s);
+			buf[nl] = 0;
+			if (text_width(buf) > maxw)
+				break;
+			blen = nl;
+			if (*s == ' ')
+				last_fit = s;
+			s = q;
+		}
+		if (*s && *s != '\n' && last_fit && last_fit > start) {   /* tnij na ostatniej spacji */
+			add_line(L, start, last_fit - start, c, maxl);
+			s = last_fit + 1;
+		} else {
+			add_line(L, start, s - start, c, maxl);
+			if (s == start && *s)                                /* znak szerszy niż pole */
+				next_cp(&s);
+		}
+		if (*s == '\n')
+			s++;
+	}
+}
+
+/* Linie powiadomienia; visible < 0 = cały tekst (do liczenia wysokości). */
+static void note_lines(const struct note *n, int maxw, int visible, struct lines *L)
+{
+	const struct theme *t = THEME;
+	char part[512];
+	L->n = 0;
+	int left = visible < 0 ? 1 << 30 : visible;
+	left = take(part, sizeof part, n->summary, left);
+	wrap(L, part, maxw, n->urgency == 2 ? t->alarm : t->accent, 2);
+	if (visible < 0 || left > 0) {
+		take(part, sizeof part, n->body, left);
+		wrap(L, part, maxw, t->fg, NL);
+	}
+}
+
+static int note_height(const struct note *n, int w)
+{
+	struct lines L;
+	note_lines(n, w - 4 * PAD, -1, &L);
+	int lh = font->height;
+	return 2 * PAD + lh * (1 + (L.n ? L.n : 1)) + PAD / 2;
+}
+
+static void draw_notes(struct output *o, pixman_image_t *img, int w, int h)
+{
+	const struct theme *t = THEME;
+	uint64_t now = now_ms();
+	int y = 0, bw = w > 600 ? 3 : 2, gap = GAP * PAD / PAD_BASE / 2;
+	pixman_image_t *clear = img;
+	pixman_color_t none = { 0 };
+	pixman_rectangle16_t all = { 0, 0, w, h };
+	pixman_image_fill_rectangles(PIXMAN_OP_SRC, clear, &none, 1, &all);
+	for (int i = 0; i < notes_n; i++) {
+		const struct note *n = &notes[i];
+		int nh = note_height(n, w);
+		uint32_t edge = n->urgency == 2 ? t->alarm : t->focus;
+		o->note_y[i] = y;
+		rect(img, 0, y, w, nh, edge);
+		rect(img, bw, y + bw, w - 2 * bw, nh - 2 * bw, t->bg);
+
+		/* nagłówek: aplikacja wielkimi literami */
+		char app[64];
+		snprintf(app, sizeof app, "%s", *n->app ? n->app : "SYSTEM");
+		for (char *p = app; *p; p++)
+			if (*p >= 'a' && *p <= 'z')
+				*p -= 32;
+		int lh = font->height, x0 = 2 * PAD, ty = y + PAD;
+		int ex = text(img, x0, ty, lh, w - 2 * PAD, "> ", t->dim);
+		text(img, ex, ty, lh, w - 2 * PAD, app, t->dim);
+
+		size_t len = strlen(n->summary) + strlen(n->body);
+		int tms = note_type_ms(len);
+		int vis = now >= n->t0 + tms ? -1 : (int)((now - n->t0) * (len + 1) / (tms ? tms : 1));
+		struct lines L;
+		note_lines(n, w - 4 * PAD, vis, &L);
+		int ly = ty + lh;
+		for (int k = 0; k < L.n; k++, ly += lh) {
+			int ex2 = text(img, x0, ly, lh, w - 2 * PAD, L.l[k], L.c[k]);
+			if (vis >= 0 && k == L.n - 1)                     /* kursor przy pisaniu */
+				rect(img, ex2 + 1, ly + lh / 6, lh / 2, lh * 2 / 3, t->fg);
+		}
+		if (vis >= 0 && L.n == 0)
+			rect(img, x0, ly + lh / 6, lh / 2, lh * 2 / 3, t->fg);
+		y += nh + gap;
+	}
+	o->note_y[notes_n] = y;
+}
+
+/* Wysokość całego stosu (logiczne px), liczona fontem skali 1. */
+static int notes_height(void)
+{
+	int y = 0;
+	for (int i = 0; i < notes_n; i++)
+		y += note_height(&notes[i], NOTE_W) + GAP / 2;
+	return y > 0 ? y - GAP / 2 : 0;
+}
+
+static void notes_render(struct output *o)
+{
+	struct surf *s = &o->note;
+	bool here = notes_n > 0 && o == focus_output();
+	if (!here) {
+		if (o->note_shown) {                                  /* schowaj: pusty bufor */
+			river_shell_surface_v1_sync_next_commit(s->ss);
+			wl_surface_attach(s->wl, NULL, 0, 0);
+			wl_surface_commit(s->wl);
+			o->note_shown = false;
+			s->drawn_w = s->drawn_h = 0;
+		}
+		return;
+	}
+	s->w = NOTE_W;
+	s->h = notes_height();
+	s->x = o->x + o->w - NOTE_W - GAP;
+	s->y = o->bar.y + o->bar.h + GAP;
+	if (notify_busy(now_ms()) || !o->note_shown)
+		s->dirty = true;
+	surf_draw(s, o, true, draw_notes);
+	river_node_v1_set_position(s->node, s->x, s->y);
+	river_node_v1_place_top(s->node);
+	o->note_shown = true;
+}
+
 void urd_render(struct output *o)
 {
 	sky_render(o, true);
@@ -666,6 +842,7 @@ void urd_render(struct output *o)
 	river_node_v1_set_position(o->bar.node, o->bar.x, o->bar.y);
 	river_node_v1_place_bottom(o->wall.node);   /* tapeta pod wszystkim */
 	river_node_v1_place_top(o->bar.node);       /* pasek nad wszystkim */
+	notes_render(o);
 }
 
 /* Zegar i sensory zmieniają się bez udziału okien — commit od razu, bez sync. */
@@ -706,6 +883,13 @@ static void ptr_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t 
 		return;
 	struct output *o;
 	wl_list_for_each(o, &outputs, link) {
+		if (o->note.wl == ptr_surf) {                         /* klik w powiadomienie */
+			int by = ptr_y * (o->note.vp ? o->note.scale120 : 120) / 120;
+			for (int i = 0; i < notes_n; i++)
+				if (by >= o->note_y[i] && by < o->note_y[i + 1])
+					notify_click(i);
+			return;
+		}
 		if (o->bar.wl != ptr_surf)
 			continue;
 		/* granice na pasku są w pikselach bufora, kursor w logicznych */

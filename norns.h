@@ -67,6 +67,7 @@ struct surf {                       /* powierzchnia rysowana przez norns */
 	struct wp_fractional_scale_v1 *fs;  /* wyświetlany w rozmiarze logicznym */
 	int scale120;                   /* skala * 120 (120 = 1,0; 150 = 1,25) */
 	int drawn_scale;
+	bool alpha;                     /* bufor z przezroczystością */
 };
 
 struct output {
@@ -90,6 +91,9 @@ struct output {
 	int tray_x0, tray_slot;         /* zasobnik na pasku (piksele bufora) */
 	struct fx *fx;                  /* warstwa efektów trybu Nostromo (nostromo.c) */
 	struct fx *crt;                 /* stałe linie kineskopu w trybie Nostromo */
+	struct surf note;               /* powiadomienia (urd.c rysuje, notify.c trzyma treść) */
+	bool note_shown;
+	int note_y[8];                  /* granice powiadomień w pikselach bufora (do klików) */
 };
 
 struct win {
@@ -205,6 +209,7 @@ void urd_cursor(const char *name);   /* kształt kursora, gdy żaden klient nie 
 #define TRAY_MAX 16
 
 struct sd_bus_slot;
+struct sd_bus;
 struct tray_item {
 	char *service, *path;           /* gdzie mieszka StatusNotifierItem */
 	char owner[256];                /* unikalna nazwa na magistrali (":1.42") */
@@ -219,6 +224,25 @@ extern int tray_n;
 int tray_init(void);                 /* zwraca fd magistrali albo -1 */
 void tray_dispatch(void);
 void tray_click(int i, int button, int x, int y);   /* 1 lewy, 2 środkowy, 3 prawy */
+
+/* ---------- powiadomienia (notify.c) ---------- */
+
+#define NOTE_MAX 4
+struct note {
+	uint32_t id;
+	char app[64], summary[256], body[512];
+	int urgency;                    /* 0 niska, 1 zwykła, 2 krytyczna */
+	bool has_default;               /* klik wywołuje akcję "default" */
+	uint64_t t0, expire;            /* expire 0 = do kliknięcia */
+};
+extern struct note notes[NOTE_MAX];
+extern int notes_n;
+void notify_init(struct sd_bus *bus);
+void notify_tick(void);
+bool notify_busy(uint64_t now);
+void notify_click(int i);
+int note_type_ms(size_t chars);
+struct output *focus_output(void);   /* norns.c: monitor z fokusem (albo pod kursorem) */
 
 /* ---------- skróty i reguły (definicje w config.h) ---------- */
 

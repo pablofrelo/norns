@@ -205,6 +205,11 @@ static struct output *active_output(void)
 	return wl_list_empty(&outputs) ? NULL : wl_container_of(outputs.next, o, link);
 }
 
+struct output *focus_output(void)
+{
+	return focused && focused->out ? focused->out : active_output();
+}
+
 static struct output *neighbor(struct output *o, int dir)
 {
 	struct wl_list *l = dir > 0 ? o->link.next : o->link.prev;
@@ -1613,6 +1618,7 @@ int main(void)
 				if (fw->fullscreen && visible(fw))
 					fs = true;
 			nostromo_tick(fs);
+			notify_tick();
 		}
 
 		if (fds[4].revents & POLLIN)
