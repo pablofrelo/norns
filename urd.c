@@ -311,10 +311,10 @@ static void draw_bar(struct output *o, pixman_image_t *img, int w, int h)
 
 /* ---------- tapeta: GRUVBOX kropki, MU/TH/UR żywe gwiazdy i kometa ---------- */
 
-#define TRAIL       28              /* punkty ogona komety */
+#define TRAIL       240             /* punkty ogona komety (co piksel) */
 #define TWINKLE_MS  200             /* tempo migotania */
-#define COMET_MS    33              /* klatki w czasie przelotu komety */
-#define COMET_LIFE  1400
+#define COMET_MS    16              /* klatki w czasie przelotu komety (~60/s) */
+#define COMET_LIFE  2200            /* tyle trwa przelot przez wysokość ekranu */
 
 struct star {
 	int x, y, size;
@@ -404,24 +404,27 @@ static void sky_mark(struct sky *k, pixman_image_t *img)
 	text(img, k->mark_x, k->mark_y, k->mark_h, k->w, mark, theme_idx == 0 ? t->focus : t->dim);
 }
 
-/* Głowa i ogon komety w chwili now: jasność maleje wzdłuż ogona. */
+/* Głowa i ogon komety w chwili now: ciągła smuga co piksel wstecz od głowy,
+ * jasność maleje wzdłuż ogona; punkty poza ekranem pomijane. */
 static int comet_points(struct sky *k, uint64_t now, int pts[TRAIL][2], uint32_t col[TRAIL])
 {
 	const struct theme *t = THEME;
 	if (!k->comet_t0)
 		return 0;
 	float dt = (float)(now - k->comet_t0);
+	float hx = k->cx + k->vx * dt, hy = k->cy + k->vy * dt;
+	float len = sqrtf(k->vx * k->vx + k->vy * k->vy);
+	float ux = k->vx / len, uy = k->vy / len;
+	float travelled = len * dt;
 	int n = 0;
-	for (int i = 0; i < TRAIL; i++) {
-		float tt = dt - i * 2.5f;           /* każdy punkt ogona 2,5 ms wcześniej */
-		if (tt < 0)
-			break;
-		int x = (int)(k->cx + k->vx * tt), y = (int)(k->cy + k->vy * tt);
-		if (x < 0 || y < 0 || x >= k->w || y >= k->h)
+	for (int i = 0; i < TRAIL && i <= travelled; i++) {
+		int x = (int)(hx - ux * i), y = (int)(hy - uy * i);
+		if (x < 0 || y < 0 || x >= k->w - 1 || y >= k->h - 1)
 			continue;
 		pts[n][0] = x;
 		pts[n][1] = y;
-		col[n] = i < 4 ? t->accent : i < 10 ? t->fg : i < 18 ? t->dim : t->line;
+		float f = (float)i / TRAIL;
+		col[n] = f < 0.06f ? t->accent : f < 0.25f ? t->fg : f < 0.6f ? t->dim : t->line;
 		n++;
 	}
 	return n;
@@ -506,12 +509,17 @@ static int sky_frame(struct output *o, struct sky *k, uint64_t now)
 		k->cy = 0;
 		float ang = (25 + rnd(&k->seed) % 30) * 3.14159f / 180;
 		float dir = rnd(&k->seed) % 2 ? 1.0f : -1.0f;
-		float speed = (k->h * 0.9f) / COMET_LIFE / sinf(ang);
+		float speed = (float)k->h / COMET_LIFE / sinf(ang);
 		k->vx = dir * speed * cosf(ang);
 		k->vy = speed * sinf(ang);
 	}
-	bool comet = k->comet_t0 && now < k->comet_t0 + COMET_LIFE + TRAIL * 3;
+	/* leci, dopóki cały ogon nie zejdzie z ekranu (najwyżej 2× czas przelotu) */
+	int pts[TRAIL][2];
+	uint32_t col[TRAIL];
+	int n = comet_points(k, now, pts, col);
+	bool comet = k->comet_t0 && (n > 0 || now < k->comet_t0 + 200) && now < k->comet_t0 + 2 * COMET_LIFE;
 	if (k->comet_t0 && !comet) {
+		n = 0;
 		k->comet_t0 = 0;
 		k->next_comet = now + 25000 + rnd(&k->seed) % 45000;
 	}
@@ -525,14 +533,19 @@ static int sky_frame(struct output *o, struct sky *k, uint64_t now)
 	pixman_image_t *img = k->b[i]->img;
 	const struct theme *t = THEME;
 
+	int bx0 = k->w, by0 = k->h, bx1 = -1, by1 = -1;      /* obszar zmian komety */
 	if (k->stale[i]) {
 		sky_full(o, k, img, now);
 		k->stale[i] = false;
 		wl_surface_damage_buffer(s->wl, 0, 0, k->w, k->h);
 	} else {
 		for (int j = 0; j < k->ntrail[i]; j++) {        /* zmaż starą kometę z tego bufora */
-			rect(img, k->trail[i][j][0], k->trail[i][j][1], 2, 2, t->wall);
-			wl_surface_damage_buffer(s->wl, k->trail[i][j][0], k->trail[i][j][1], 2, 2);
+			int x = k->trail[i][j][0], y = k->trail[i][j][1];
+			rect(img, x, y, 2, 2, t->wall);
+			if (x < bx0) bx0 = x;
+			if (y < by0) by0 = y;
+			if (x > bx1) bx1 = x;
+			if (y > by1) by1 = y;
 		}
 		if (k->ntrail[i])
 			sky_mark(k, img);
@@ -544,16 +557,19 @@ static int sky_frame(struct output *o, struct sky *k, uint64_t now)
 		}
 	}
 
-	int pts[TRAIL][2];
-	uint32_t col[TRAIL];
-	int n = comet_points(k, now, pts, col);
 	for (int j = n - 1; j >= 0; j--) {                  /* ogon pod głową */
-		rect(img, pts[j][0], pts[j][1], 2, 2, col[j]);
-		wl_surface_damage_buffer(s->wl, pts[j][0], pts[j][1], 2, 2);
-		k->trail[i][j][0] = pts[j][0];
-		k->trail[i][j][1] = pts[j][1];
+		int x = pts[j][0], y = pts[j][1];
+		rect(img, x, y, 2, 2, col[j]);
+		k->trail[i][j][0] = x;
+		k->trail[i][j][1] = y;
+		if (x < bx0) bx0 = x;
+		if (y < by0) by0 = y;
+		if (x > bx1) bx1 = x;
+		if (y > by1) by1 = y;
 	}
 	k->ntrail[i] = n;
+	if (bx1 >= 0)
+		wl_surface_damage_buffer(s->wl, bx0, by0, bx1 - bx0 + 2, by1 - by0 + 2);
 
 	buf_attach(k->b[i], s->wl);
 	wl_surface_commit(s->wl);
