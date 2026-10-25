@@ -226,6 +226,9 @@ struct tray_item {
 	pixman_image_t *icon;           /* premultiplied ARGB, rozmiar oryginalny */
 	bool attention;                 /* Status = NeedsAttention */
 	char *menu;                     /* ścieżka com.canonical.dbusmenu albo NULL */
+	pixman_image_t *tinted;         /* ikona w kolorze motywu (urd.c), z: */
+	pixman_image_t *tint_src;
+	uint32_t tint_rgb;
 	bool item_is_menu;              /* lewy klik też otwiera menu */
 	struct sd_bus_slot *sig_slot, *get_slot;
 };

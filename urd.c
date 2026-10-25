@@ -193,6 +193,40 @@ static int draw_sensors(pixman_image_t *img, int right, int h, int min_x)
 	return x + 2 * PAD;
 }
 
+/* Ikonka w jednym kolorze motywu: jasność oryginału zostaje (szczegóły widać),
+ * barwa znika. Ciemne fragmenty nie giną na ciemnym pasku — jasność od 35%. */
+static pixman_image_t *tinted_icon(struct tray_item *it, uint32_t rgb)
+{
+	if (it->tinted && it->tint_src == it->icon && it->tint_rgb == rgb)
+		return it->tinted;
+	if (it->tinted) {
+		void *d = pixman_image_get_data(it->tinted);
+		pixman_image_unref(it->tinted);
+		free(d);
+		it->tinted = NULL;
+	}
+	int w = pixman_image_get_width(it->icon), h = pixman_image_get_height(it->icon);
+	uint32_t *src = pixman_image_get_data(it->icon), *px = malloc((size_t)w * h * 4);
+	if (!px)
+		return it->icon;
+	uint32_t cr = (rgb >> 16) & 0xff, cg = (rgb >> 8) & 0xff, cb = rgb & 0xff;
+	for (int i = 0; i < w * h; i++) {
+		uint32_t p = src[i], a = p >> 24;
+		if (!a) {
+			px[i] = 0;
+			continue;
+		}
+		uint32_t r = (p >> 16) & 0xff, g = (p >> 8) & 0xff, b = p & 0xff;   /* premultiplied */
+		float l = (0.30f * r + 0.59f * g + 0.11f * b) / a;                /* 0..1 bez alfy */
+		float v = (0.35f + 0.65f * l) * a / 255.0f;
+		px[i] = a << 24 | (uint32_t)(cr * v) << 16 | (uint32_t)(cg * v) << 8 | (uint32_t)(cb * v);
+	}
+	it->tinted = pixman_image_create_bits(PIXMAN_a8r8g8b8, w, h, px, w * 4);
+	it->tint_src = it->icon;
+	it->tint_rgb = rgb;
+	return it->tinted;
+}
+
 /*  [1]…[9]  tytuł okna ......  WG LAN CPU RAM °C BAT  Fri 23.10 21:41  [ GRUVBOX ] */
 static void draw_bar(struct output *o, pixman_image_t *img, int w, int h)
 {
@@ -252,6 +286,8 @@ static void draw_bar(struct output *o, pixman_image_t *img, int w, int h)
 	o->tray_x0 = cx - PAD - tray_n * slot;
 	for (int i = 0; i < tray_n; i++) {
 		pixman_image_t *ic = tray_items[i]->icon;
+		if (ic && TRAY_TINT)
+			ic = tinted_icon(tray_items[i], tray_items[i]->attention ? t->alarm : t->fg);
 		int ix = o->tray_x0 + i * slot + (slot - isz) / 2, iy = (h - isz) / 2;
 		if (ic) {
 			int iw = pixman_image_get_width(ic), ih = pixman_image_get_height(ic);

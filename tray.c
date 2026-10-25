@@ -122,6 +122,7 @@ static void item_clear(struct tray_item *it)
 	sd_bus_slot_unref(it->sig_slot);
 	sd_bus_slot_unref(it->get_slot);
 	icon_free(it->icon);
+	icon_free(it->tinted);
 	free(it->service);
 	free(it->path);
 	free(it->id);
@@ -210,6 +211,8 @@ static int on_props(sd_bus_message *m, void *userdata, sd_bus_error *err)
 	}
 	if (best || !it->icon) {
 		icon_free(it->icon);
+		icon_free(it->tinted);              /* wersja w kolorze motywu powstanie od nowa */
+		it->tinted = NULL;
 		it->icon = best;
 	}
 	fprintf(stderr, "norns: zasobnik %s (%s) ikona=%s%s\n", it->id ? it->id : "?", it->service,

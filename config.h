@@ -17,6 +17,7 @@
 #define DROP_H        700           /* na mniejszym ekranie najwyżej 90% obszaru */
 #define DROP_APP_ID   "norns-drop"
 #define DROP_MS       500           /* wysuwanie od dołu / chowanie */
+#define TRAY_TINT     1             /* ikonki w zasobniku w kolorze motywu (0 = oryginalne) */
 #define NOTE_W        640           /* szerokość powiadomienia (logiczne px) */
 #define NOTE_FONT     150           /* font powiadomień: % fontu paska (Spleen 16 → 24) */
 #define NOTE_MS       6000          /* jak długo wisi zwykłe powiadomienie */
