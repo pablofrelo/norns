@@ -28,11 +28,23 @@ static const char *const term_muthur[] = {
 	"foot", "-o", "main.font=Spleen:pixelsize=16", "-o", "main.initial-color-theme=light", NULL
 };
 
+/* Uruchamianie programów (Super+D): fuzzel w kolorach motywu. */
+static const char *const run_gruvbox[] = {
+	"fuzzel", "--font=JetBrainsMono Nerd Font:size=11", "--border-radius=0", "--border-width=2",
+	"--background=282828f0", "--text-color=ebdbb2ff", "--match-color=fabd2fff",
+	"--selection-color=504945ff", "--selection-text-color=ebdbb2ff", "--border-color=8ec07cff", NULL
+};
+static const char *const run_muthur[] = {
+	"fuzzel", "--font=Spleen:pixelsize=16", "--border-radius=0", "--border-width=2",
+	"--background=050806f0", "--text-color=8cffb0ff", "--match-color=d4ffe0ff",
+	"--selection-color=163d22ff", "--selection-text-color=d4ffe0ff", "--border-color=8cffb0ff", NULL
+};
+
 const struct theme themes[] = {
 	{
 		.name = "gruvbox", .label = "GRUVBOX",
 		.font = "JetBrainsMono Nerd Font:pixelsize=14",
-		.term = term_gruvbox,
+		.term = term_gruvbox, .run = run_gruvbox,
 		.bg = 0x282828, .line = 0x504945, .dim = 0x928374, .fg = 0xebdbb2,
 		.accent = 0x8ec07c, .warn = 0xfabd2f, .alarm = 0xfb4934,
 		.focus = 0x8ec07c, .unfocus = 0x3c3836,
@@ -41,7 +53,7 @@ const struct theme themes[] = {
 	{
 		.name = "muthur", .label = "MU/TH/UR",
 		.font = "Spleen:pixelsize=16",  /* bitmapowe .otb, 8x16 */
-		.term = term_muthur,
+		.term = term_muthur, .run = run_muthur,
 		.bg = 0x050806, .line = 0x163d22, .dim = 0x4f9a68, .fg = 0x8cffb0,
 		.accent = 0xd4ffe0, .warn = 0xffb000, .alarm = 0xff5a4a,
 		.focus = 0x8cffb0, .unfocus = 0x163d22,
@@ -67,6 +79,7 @@ static const char *const vol_mute[] = { "wpctl", "set-mute", "@DEFAULT_AUDIO_SIN
 
 static const struct key keys[] = {
 	{ SUPER,        XKB_KEY_Return, SPAWN,     0, NULL },  /* NULL = terminal motywu */
+	{ SUPER,        XKB_KEY_d,      SPAWN,     1, NULL },  /* 1 = uruchamianie programów motywu */
 	{ SUPER,        XKB_KEY_b,      SPAWN,     0, browser },
 	{ SUPER,        XKB_KEY_e,      SPAWN,     0, files },
 	{ SUPER,        XKB_KEY_q,      CLOSE,     0, NULL },

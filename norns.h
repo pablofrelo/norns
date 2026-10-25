@@ -36,6 +36,7 @@ struct theme {
 	const char *label;              /* napis na pasku */
 	const char *font;               /* wzorzec fontconfig */
 	const char *const *term;        /* terminal odpalany w tym motywie */
+	const char *const *run;         /* uruchamianie programów (Super+D) */
 	uint32_t bg, line, dim, fg, accent, warn, alarm;   /* 0xRRGGBB */
 	uint32_t focus, unfocus;        /* ramki okien */
 	uint32_t wall, dot;             /* tapeta */

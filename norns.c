@@ -643,7 +643,7 @@ static void run(const struct key *k)
 
 	switch (k->act) {
 	case SPAWN:
-		spawn(k->cmd ? k->cmd : THEME->term);
+		spawn(k->cmd ? k->cmd : k->arg ? THEME->run : THEME->term);
 		break;
 	case CLOSE:
 		close_focused = true;
