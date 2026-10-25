@@ -66,6 +66,7 @@ the source directory and falls back to rhine when it exits.
 | Super+` | slide-up terminal (the same key hides it) |
 | Super+D | app launcher (fuzzel, per theme) |
 | Super+/ or Super+F1 | shortcut cheat sheet (fuzzel) |
+| Print / Shift+Print / Super+Print | screenshot of the monitor / a region / the focused window (grim, slurp; saved to ~/Pictures/Screenshots and copied) |
 | Super+B / Super+E | browser / file manager |
 | Super+Q | close window |
 | Super+H/J/K/L | focus left/down/up/right (across monitors) |

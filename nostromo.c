@@ -358,6 +358,36 @@ static void gen_servo(const char *path, bool up)
 	free(x);
 }
 
+/* Migawka: dwa suche kliknięcia (otwarcie, zamknięcie) i krótki szum przesuwu. */
+static void gen_shutter(const char *path)
+{
+	int n = RATE * 18 / 100;
+	float *x = calloc(n, sizeof *x);
+	uint32_t s = 41;
+	struct biquad hp = bq(RATE, 1200, true);
+	for (int i = 0; i < n; i++) {
+		float t = (float)i / RATE, v = 0;
+		for (int k = 0; k < 2; k++) {                       /* klik 0 ms i 70 ms */
+			float tk = t - k * 0.07f;
+			if (tk >= 0)
+				v += expf(-tk * 600) * frand(&s) * (k ? 0.8f : 1.0f)
+				     + expf(-tk * 120) * sinf(2 * (float)M_PI * (k ? 520 : 380) * tk) * 0.3f;
+		}
+		if (t < 0.07f)
+			v += 0.12f * frand(&s) * sinf((float)M_PI * t / 0.07f);   /* przesuw migawki */
+		x[i] = 0.7f * bq_run(&hp, v);
+	}
+	wav_write(path, x, n, RATE);
+	free(x);
+}
+
+const char *sfx_path(const char *name)
+{
+	static char p[300];
+	sound_path(p, sizeof p, name);
+	return p;
+}
+
 void sfx_drop(bool up)
 {
 	play_file(up ? "drop_up.wav" : "drop_down.wav", 0.45f);
@@ -693,6 +723,8 @@ void nostromo_init(void)
 	gen_servo(p, true);
 	sound_path(p, sizeof p, "drop_down.wav");
 	gen_servo(p, false);
+	sound_path(p, sizeof p, "shutter.wav");
+	gen_shutter(p);
 	srand((unsigned)time(NULL));
 
 	char sp[300];

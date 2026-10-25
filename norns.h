@@ -190,6 +190,7 @@ int nostromo_jitter(const struct win *w, uint64_t now);
 void nostromo_output_fini(struct output *o);
 void sfx_typing(const char *text, int ms);              /* stukot klawiszy do powiadomienia */
 void sfx_drop(bool up);                                 /* serwo terminala wysuwanego */
+const char *sfx_path(const char *name);                 /* ścieżka wygenerowanego dźwięku */
 
 /* deco.c */
 void deco_init(struct win *w);
@@ -289,7 +290,7 @@ void ctl_init(struct sd_bus *bus);     /* norns.c: polecenia z norns-ctl */   /*
 
 enum action { SPAWN, CLOSE, QUIT, VIEW, SEND_TAG, FOCUS_OUT, SEND_OUT, THEME_TOGGLE, FLOAT_TOGGLE,
               ANIM_TOGGLE, FULLSCREEN_TOGGLE, VOLUME, FOCUS_DIR, SWAP_DIR, NOSTROMO_TOGGLE,
-              HELP, DROP_TOGGLE };
+              HELP, DROP_TOGGLE, SHOT };
 enum { LEFT, DOWN, UP, RIGHT };
 
 struct key {

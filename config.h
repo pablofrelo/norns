@@ -84,6 +84,7 @@ static const char *const vol_mute[] = { "wpctl", "set-mute", "@DEFAULT_AUDIO_SIN
 #define SUPER RIVER_SEAT_V1_MODIFIERS_MOD4
 #undef CTRL                         /* glibc ma makro CTRL(x) w ttydefaults.h */
 #define CTRL  RIVER_SEAT_V1_MODIFIERS_CTRL
+#define SHIFT RIVER_SEAT_V1_MODIFIERS_SHIFT
 #define TAGKEYS(n) \
 	{ SUPER,        XKB_KEY_##n, VIEW,     (n) - 1, NULL }, \
 	{ SUPER | CTRL, XKB_KEY_##n, SEND_TAG, (n) - 1, NULL }
@@ -91,6 +92,9 @@ static const char *const vol_mute[] = { "wpctl", "set-mute", "@DEFAULT_AUDIO_SIN
 static const struct key keys[] = {
 	{ SUPER,        XKB_KEY_Return, SPAWN,     0, NULL },  /* NULL = terminal motywu */
 	{ SUPER,        XKB_KEY_grave,  DROP_TOGGLE, 0, NULL },  /* terminal wysuwany od dołu */
+	{ 0,            XKB_KEY_Print,  SHOT,      0, NULL },  /* zrzut monitora pod kursorem */
+	{ SHIFT,        XKB_KEY_Print,  SHOT,      1, NULL },  /* zrzut zaznaczonego obszaru */
+	{ SUPER,        XKB_KEY_Print,  SHOT,      2, NULL },  /* zrzut okna z fokusem */
 	{ SUPER,        XKB_KEY_slash,  HELP,      0, NULL },  /* ściąga ze skrótami */
 	{ SUPER,        XKB_KEY_F1,     HELP,      0, NULL },
 	{ SUPER,        XKB_KEY_d,      SPAWN,     1, NULL },  /* 1 = uruchamianie programów motywu */
@@ -144,6 +148,9 @@ static const char *const help_lines[] = {
 	"Super+lewy przycisk   przesuń / zamień kafle",
 	"Super+prawy przycisk  rozmiar / proporcje podziału",
 	"Super+Escape          wyjdź z norns",
+	"Print                 zrzut monitora (plik + schowek)",
+	"Shift+Print           zrzut zaznaczonego obszaru",
+	"Super+Print           zrzut okna z fokusem",
 	"Super+/ albo F1       ta ściąga",
 	NULL
 };

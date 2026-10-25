@@ -787,6 +787,49 @@ static void drop_toggle(struct output *o)
 		drop_show(drop_win, o);
 }
 
+/* ---------- zrzuty ekranu (grim, slurp, wl-copy) ---------- */
+
+/* Nazwa złącza monitora (DP-9, eDP-1) — dla grim -o i norns-ctl status. */
+static const char *conn_of(struct output *o)
+{
+	struct wlout *wo;
+	wl_list_for_each(wo, &wlouts, link)
+		if (wo->name == o->wl_name && wo->conn)
+			return wo->conn;
+	return "?";
+}
+
+
+/* 0 — monitor pod kursorem, 1 — zaznaczony obszar, 2 — okno z fokusem.
+ * Plik jak w niri: ~/Pictures/Screenshots/Screenshot from RRRR-MM-DD GG-MM-SS.png,
+ * do tego schowek, migawka i powiadomienie (verdandi). */
+static void screenshot(int kind)
+{
+	char what[160];
+	struct output *o = active_output();
+	if (kind == 0) {
+		if (!o)
+			return;
+		snprintf(what, sizeof what, "grim -o '%s'", conn_of(o));
+	} else if (kind == 1) {
+		snprintf(what, sizeof what, "g=$(slurp) || exit 0; grim -g \"$g\"");
+	} else {
+		if (!focused || !visible(focused))
+			return;
+		snprintf(what, sizeof what, "grim -g '%d,%d %dx%d'", focused->x, focused->y,
+		         focused->dw > 0 ? focused->dw : focused->w, focused->dh > 0 ? focused->dh : focused->h);
+	}
+	char script[1024];
+	snprintf(script, sizeof script,
+	         "d=\"$(xdg-user-dir PICTURES 2>/dev/null || echo \"$HOME/Pictures\")/Screenshots\"; "
+	         "mkdir -p \"$d\"; f=\"$d/Screenshot from $(date '+%%Y-%%m-%%d %%H-%%M-%%S').png\"; "
+	         "%s \"$f\" || exit 1; pw-play --volume 0.5 '%s' & "
+	         "wl-copy --type image/png < \"$f\" 2>/dev/null; "
+	         "notify-send -a 'zrzut ekranu' 'Zapisano i skopiowano' \"$f\"",
+	         what, sfx_path("shutter.wav"));
+	spawn((const char *const[]){ "/bin/sh", "-c", script, NULL });
+}
+
 /* Wołane z eventu pressed — zmieniamy tylko nasze dane, requesty idą w manage. */
 static void run(const struct key *k)
 {
@@ -889,6 +932,9 @@ static void run(const struct key *k)
 	case ANIM_TOGGLE:
 		anim_on = !anim_on;
 		river_window_manager_v1_manage_dirty(wm);
+		break;
+	case SHOT:
+		screenshot(k->arg);
 		break;
 	case DROP_TOGGLE:
 		drop_toggle(active_output());       /* monitor pod kursorem — też pusty */
@@ -1110,15 +1156,6 @@ static const struct river_layer_shell_output_v1_listener lo_listener = {
 
 #define CTL_NAME  "io.github.pablofrelo.Norns"
 #define CTL_PATH  "/io/github/pablofrelo/Norns"
-
-static const char *conn_of(struct output *o)
-{
-	struct wlout *wo;
-	wl_list_for_each(wo, &wlouts, link)
-		if (wo->name == o->wl_name && wo->conn)
-			return wo->conn;
-	return "?";
-}
 
 /* Stan dla skryptów: motyw, tryby, a dla każdego monitora widoczny tag i zajęte. */
 static void ctl_status(char *out, size_t n)
