@@ -537,6 +537,27 @@ static void spawn(const char *const *cmd)
 	}
 }
 
+/* Uruchamianie programów na monitorze z fokusem (fuzzel bez --output wybiera sam). */
+static void spawn_run(void)
+{
+	const char *argv[32];
+	int n = 0;
+	for (const char *const *a = THEME->run; *a && n < 30; a++)
+		argv[n++] = *a;
+	struct output *o = focused && focused->out ? focused->out : active_output();
+	char opt[80];
+	struct wlout *wo;
+	if (o)
+		wl_list_for_each(wo, &wlouts, link)
+			if (wo->name == o->wl_name && wo->conn) {
+				snprintf(opt, sizeof opt, "--output=%s", wo->conn);
+				argv[n++] = opt;
+				break;
+			}
+	argv[n] = NULL;
+	spawn(argv);
+}
+
 /* ---------- akcje wołane też z paska ---------- */
 
 void view_tag(struct output *o, int tag)
@@ -643,7 +664,10 @@ static void run(const struct key *k)
 
 	switch (k->act) {
 	case SPAWN:
-		spawn(k->cmd ? k->cmd : k->arg ? THEME->run : THEME->term);
+		if (!k->cmd && k->arg)
+			spawn_run();
+		else
+			spawn(k->cmd ? k->cmd : THEME->term);
 		break;
 	case CLOSE:
 		close_focused = true;
