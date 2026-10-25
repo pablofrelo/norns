@@ -107,6 +107,7 @@ struct win {
 	struct node *leaf;
 	bool fresh;                     /* nowe okno, jeszcze bez ssd/tiled */
 	char *title, *app_id;
+	char ident[40];                 /* stały identyfikator od rivera (przeżywa restart norns) */
 	struct win *parent;             /* dialog -> okno, do którego należy */
 	int min_w, min_h, max_w, max_h; /* podpowiedź rozmiaru od okna */
 	bool floating;                  /* pływa nad kafelkami, poza drzewem BSP */

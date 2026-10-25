@@ -1,5 +1,6 @@
 // norns — BSP window manager for river (river-window-management-v1)
 #define _POSIX_C_SOURCE 200809L
+#define _DEFAULT_SOURCE             /* strsep */
 #include <fcntl.h>
 #include <limits.h>
 #include <linux/input-event-codes.h>
@@ -1060,7 +1061,11 @@ static void win_exit_fullscreen_requested(void *data, struct river_window_v1 *rw
 static void win_minimize_requested(void *d, struct river_window_v1 *rw) {}
 static void win_unreliable_pid(void *d, struct river_window_v1 *rw, int32_t pid) {}
 static void win_presentation_hint(void *d, struct river_window_v1 *rw, uint32_t h) {}
-static void win_identifier(void *d, struct river_window_v1 *rw, const char *s) {}
+static void win_identifier(void *data, struct river_window_v1 *rw, const char *id)
+{
+	struct win *w = data;
+	snprintf(w->ident, sizeof w->ident, "%s", id);
+}
 static void win_capture_sessions(void *d, struct river_window_v1 *rw, uint32_t n) {}
 static void win_touch_move_requested(void *d, struct river_window_v1 *rw, struct river_seat_v1 *s, int32_t t) {}
 static void win_touch_resize_requested(void *d, struct river_window_v1 *rw, struct river_seat_v1 *s, int32_t t, uint32_t e) {}
@@ -1420,16 +1425,259 @@ static void wm_finished(void *d, struct river_window_manager_v1 *m)
 	running = false;
 }
 
+/* ---------- zapamiętany układ (przeżywa restart norns, nie rivera) ---------- */
+/*
+ * Po każdej sekwencji manage norns zapisuje układ do $XDG_RUNTIME_DIR/norns/layout:
+ * widoczny tag każdego monitora, drzewa BSP z proporcjami, pływające okna z
+ * pozycją. Okna rozpoznaje po identyfikatorze od rivera, który się nie zmienia,
+ * dopóki okno żyje. Po restarcie norns (run.sh, powrót z rhine) okna wracają na
+ * swoje miejsca; okna, których już nie ma, po prostu wypadają z drzew.
+ */
+
+enum { RESTORE_NONE, RESTORE_PENDING, RESTORE_DONE };
+static int restore_state;
+static uint64_t restore_deadline;
+static char *saved_layout;          /* treść pliku z poprzedniego uruchomienia */
+static char *last_written;
+
+static const char *desc_of(struct output *o)
+{
+	struct wlout *wo;
+	wl_list_for_each(wo, &wlouts, link)
+		if (wo->name == o->wl_name)
+			return wo->desc;
+	return NULL;
+}
+
+static void layout_path(char *buf, size_t n)
+{
+	const char *rt = getenv("XDG_RUNTIME_DIR");
+	snprintf(buf, n, "%s/norns/layout", rt && *rt ? rt : "/tmp");
+}
+
+static void layout_load(void)
+{
+	char path[300];
+	layout_path(path, sizeof path);
+	FILE *f = fopen(path, "r");
+	if (!f)
+		return;
+	size_t cap = 1 << 16, len = fread(saved_layout = malloc(cap), 1, cap - 1, f);
+	fclose(f);
+	saved_layout[len] = 0;
+	restore_state = RESTORE_PENDING;
+	restore_deadline = now_ms() + 2000;     /* nie czekamy w nieskończoność na opisy monitorów */
+}
+
+/* Czy okno jest w zapisanym układzie (wtedy czeka na odtworzenie). */
+static bool layout_knows(struct win *w)
+{
+	if (!saved_layout || !*w->ident)
+		return false;
+	char key[48];
+	snprintf(key, sizeof key, "\t%s\t", w->ident);
+	char key2[48];
+	snprintf(key2, sizeof key2, "\t%s\n", w->ident);
+	return strstr(saved_layout, key) || strstr(saved_layout, key2);
+}
+
+static struct win *unplaced_by_ident(const char *id)
+{
+	struct win *w;
+	wl_list_for_each(w, &windows, link)
+		if (!w->out && *w->ident && !strcmp(w->ident, id))
+			return w;
+	return NULL;
+}
+
+static void tree_write(struct node *n, char **p, char *end)
+{
+	if (*p >= end - 64)
+		return;
+	if (n->win)
+		*p += snprintf(*p, end - *p, "\tL\t%s", *n->win->ident ? n->win->ident : "-");
+	else {
+		*p += snprintf(*p, end - *p, "\tN\t%d\t%.3f", n->side_by_side, n->ratio);
+		tree_write(n->a, p, end);
+		tree_write(n->b, p, end);
+	}
+}
+
+/* Odbudowa drzewa z tokenów; liście bez okna wypadają, rodzic z jednym dzieckiem znika. */
+static struct node *tree_read(char **tok, struct output *o, int tag)
+{
+	char *t = strsep(tok, "\t");
+	if (!t)
+		return NULL;
+	if (!strcmp(t, "L")) {
+		char *id = strsep(tok, "\t");
+		struct win *w = id ? unplaced_by_ident(id) : NULL;
+		if (!w || w->drop)
+			return NULL;
+		struct node *leaf = calloc(1, sizeof *leaf);
+		leaf->win = w;
+		w->leaf = leaf;
+		w->out = o;
+		w->tag = tag;
+		w->floating = false;
+		return leaf;
+	}
+	if (strcmp(t, "N"))
+		return NULL;
+	char *sbs = strsep(tok, "\t"), *ratio = strsep(tok, "\t");
+	struct node *a = tree_read(tok, o, tag), *b = tree_read(tok, o, tag);
+	if (!a || !b)
+		return a ? a : b;
+	struct node *n = calloc(1, sizeof *n);
+	n->side_by_side = sbs && *sbs == '1';
+	n->ratio = ratio ? strtof(ratio, NULL) : 0.5f;
+	if (n->ratio < 0.1f || n->ratio > 0.9f)
+		n->ratio = 0.5f;
+	n->a = a;
+	n->b = b;
+	a->parent = b->parent = n;
+	return n;
+}
+
+static struct output *output_by_desc(const char *desc)
+{
+	struct output *o;
+	wl_list_for_each(o, &outputs, link) {
+		const char *d = desc_of(o);
+		if (d && !strcmp(d, desc))
+			return o;
+	}
+	return NULL;
+}
+
+static bool outputs_described(void)
+{
+	struct output *o;
+	wl_list_for_each(o, &outputs, link)
+		if (!desc_of(o))
+			return false;
+	return !wl_list_empty(&outputs);
+}
+
+static void layout_restore(void)
+{
+	restore_state = RESTORE_DONE;
+	struct win *focus = NULL;
+	char *copy = strdup(saved_layout), *line, *rest = copy;
+	while ((line = strsep(&rest, "\n"))) {
+		char *tok = line, *kind = strsep(&tok, "\t");
+		if (!kind || !tok)
+			continue;
+		if (!strcmp(kind, "O")) {                       /* O  opis  tag */
+			char *desc = strsep(&tok, "\t"), *tag = strsep(&tok, "\t");
+			struct output *o = desc ? output_by_desc(desc) : NULL;
+			if (o && tag && atoi(tag) >= 0 && atoi(tag) < NTAGS)
+				o->tag = atoi(tag);
+		} else if (!strcmp(kind, "T")) {                /* T  opis  tag  drzewo */
+			char *desc = strsep(&tok, "\t"), *tag = strsep(&tok, "\t");
+			struct output *o = desc ? output_by_desc(desc) : NULL;
+			int t = tag ? atoi(tag) : -1;
+			if (!o || t < 0 || t >= NTAGS || o->roots[t])
+				continue;
+			o->roots[t] = tree_read(&tok, o, t);
+		} else if (!strcmp(kind, "F")) {                /* F  id  opis  tag  x  y  (względem monitora) */
+			char *id = strsep(&tok, "\t"), *desc = strsep(&tok, "\t"), *tag = strsep(&tok, "\t");
+			char *x = strsep(&tok, "\t"), *y = strsep(&tok, "\t");
+			struct win *w = id ? unplaced_by_ident(id) : NULL;
+			struct output *o = desc ? output_by_desc(desc) : NULL;
+			if (!w || !o || !tag || !x || !y || w->drop)
+				continue;
+			w->floating = w->placed = true;
+			attach(w, o, atoi(tag) >= 0 && atoi(tag) < NTAGS ? atoi(tag) : o->tag);
+			w->x = o->x + atoi(x);
+			w->y = o->y + atoi(y);
+		} else if (!strcmp(kind, "X")) {                /* X  id okna z fokusem */
+			struct win *w;
+			wl_list_for_each(w, &windows, link)
+				if (*w->ident && !strcmp(w->ident, tok))
+					focus = w;
+		}
+	}
+	free(copy);
+	struct win *w;
+	int n = 0;
+	wl_list_for_each(w, &windows, link) {
+		if (!w->fresh || !w->out)
+			continue;                                   /* reszta (np. monitor odpięty) — normalnie */
+		w->float_pending = 0;
+		w->tiled_dirty = true;
+		w->fresh = false;
+		river_window_v1_use_ssd(w->rw);
+		n++;
+	}
+	if (focus && focus->out)
+		set_focus(focus);
+	bars_dirty = true;
+	fprintf(stderr, "norns: odtworzony układ — %d okien na swoich miejscach\n", n);
+}
+
+static void layout_save(void)
+{
+	if (restore_state == RESTORE_PENDING)
+		return;                                         /* nie nadpisujemy, póki nie odtworzone */
+	static char buf[1 << 16];
+	char *p = buf, *end = buf + sizeof buf;
+	struct output *o;
+	wl_list_for_each(o, &outputs, link) {
+		const char *d = desc_of(o);
+		if (!d)
+			continue;
+		p += snprintf(p, end - p, "O\t%s\t%d\n", d, o->tag);
+		for (int t = 0; t < NTAGS && p < end - 256; t++) {
+			if (!o->roots[t])
+				continue;
+			p += snprintf(p, end - p, "T\t%s\t%d", d, t);
+			tree_write(o->roots[t], &p, end);
+			p += snprintf(p, end - p, "\n");
+		}
+	}
+	struct win *w;
+	wl_list_for_each(w, &windows, link) {
+		if (!w->out || !w->floating || w->drop || !*w->ident || p >= end - 256)
+			continue;
+		const char *d = desc_of(w->out);
+		if (d)
+			p += snprintf(p, end - p, "F\t%s\t%s\t%d\t%d\t%d\n", w->ident, d, w->tag,
+			              w->x - w->out->x, w->y - w->out->y);
+	}
+	if (focused && *focused->ident && p < end - 64)
+		p += snprintf(p, end - p, "X\t%s\n", focused->ident);
+	if (last_written && !strcmp(last_written, buf))
+		return;
+	char path[300], tmp[310];
+	layout_path(path, sizeof path);
+	snprintf(tmp, sizeof tmp, "%s.tmp", path);
+	FILE *f = fopen(tmp, "w");
+	if (!f)
+		return;
+	fputs(buf, f);
+	if (fclose(f) == 0 && rename(tmp, path) == 0) {
+		free(last_written);
+		last_written = strdup(buf);
+	}
+}
+
 static void wm_manage_start(void *d, struct river_window_manager_v1 *m)
 {
 	struct output *o, *act = active_output();
 	struct win *w;
 	struct seat *s;
 
+	/* po restarcie norns: okna z zapisanego układu wracają na swoje miejsca */
+	if (restore_state == RESTORE_PENDING && (outputs_described() || now_ms() > restore_deadline))
+		layout_restore();
+
 	/* nowe i osierocone okna lądują na aktywnym monitorze */
 	wl_list_for_each(w, &windows, link) {
 		if (w->out || !act)
 			continue;
+		if (restore_state == RESTORE_PENDING && w->fresh && layout_knows(w))
+			continue;                                   /* czeka na opisy monitorów */
 		if (w->fresh) {
 			w->floating = should_float(w);
 			w->float_pending = w->floating ? 1 : 0;
@@ -1607,6 +1855,7 @@ static void wm_manage_start(void *d, struct river_window_manager_v1 *m)
 	}
 	focus_dirty = warp = false;
 
+	layout_save();
 	river_window_manager_v1_manage_finish(wm);
 }
 
@@ -1772,6 +2021,8 @@ static void wo_description(void *data, struct wl_output *o, const char *desc)
 	struct wlout *wo = data;
 	free(wo->desc);
 	wo->desc = strdup(desc);
+	if (restore_state == RESTORE_PENDING && wm)
+		river_window_manager_v1_manage_dirty(wm);   /* może już da się odtworzyć układ */
 }
 
 static const struct wl_output_listener wo_listener = {
@@ -1866,6 +2117,7 @@ int main(void)
 	if (!urd_init())
 		return 1;
 	nostromo_init();
+	layout_load();
 	run_theme_script();         /* otwarte foote dostają paletę zapamiętanego motywu */
 
 	/* xkb i layer shell przed wm: eventy output/seat od razu ich używają */
@@ -1926,6 +2178,8 @@ int main(void)
 					fs = true;
 			nostromo_tick(fs);
 			notify_tick();
+			if (restore_state == RESTORE_PENDING && now_ms() > restore_deadline)
+				river_window_manager_v1_manage_dirty(wm);   /* opisy monitorów nie przyszły */
 		}
 
 		if (fds[4].revents & POLLIN)

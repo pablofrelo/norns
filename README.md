@@ -21,6 +21,9 @@ and used daily on my own machine.
 - fullscreen (application requests and a key binding)
 - per-application rules: open an app on a chosen monitor, matched by serial
   number, not by the changing DP-n connector name
+- the layout survives a norns restart (`./run.sh`, a detour through another
+  window manager): windows return to their monitor, tag and place in the tree,
+  floating ones to their position; kept in `$XDG_RUNTIME_DIR/norns/layout`
 - urd stays sharp on fractionally scaled outputs (e.g. 1.25)
 - urd: clickable tags, window title, network/WireGuard, CPU, RAM, temperature,
   battery, volume, system tray (StatusNotifierItem: left click activates, middle
