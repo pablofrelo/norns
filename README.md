@@ -60,7 +60,7 @@ window manager if norns exits:
 
 While hacking, `./run.sh` swaps the running window manager for `./norns` from
 the source directory. When it exits, the window manager named in
-`NORNS_FALLBACK` takes over (rhine by default, if installed), so the session
+`NORNS_FALLBACK` takes over ([rhine](https://codeberg.org/sivecano/rhine) by default, if installed), so the session
 survives a crash:
 
     NORNS_FALLBACK=my-other-wm ./run.sh
