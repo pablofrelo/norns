@@ -13,8 +13,8 @@
 #define SLIDE_MS  140               /* ślizg przy zmianie tagu */
 #define MOVE_MS   120               /* dojazd okna na nowe miejsce */
 #define OPEN_MS   160               /* otwieranie okna (kineskop) */
-#define DROP_W        50            /* terminal wysuwany: % szerokości monitora */
-#define DROP_H        50            /* i % wysokości */
+#define DROP_W        1280          /* terminal wysuwany: stały rozmiar (logiczne px), */
+#define DROP_H        700           /* na mniejszym ekranie najwyżej 90% obszaru */
 #define DROP_APP_ID   "norns-drop"
 #define DROP_MS       500           /* wysuwanie od dołu / chowanie */
 #define NOTE_W        640           /* szerokość powiadomienia (logiczne px) */

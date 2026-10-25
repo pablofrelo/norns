@@ -708,8 +708,8 @@ static bool drop_spawning;
 static void drop_place(struct win *w)
 {
 	struct output *o = w->out;
-	w->w = o->aw * DROP_W / 100;
-	w->h = o->ah * DROP_H / 100;
+	w->w = DROP_W < o->aw * 9 / 10 ? DROP_W : o->aw * 9 / 10;
+	w->h = DROP_H < o->ah * 9 / 10 ? DROP_H : o->ah * 9 / 10;
 	w->x = o->ax + (o->aw - w->w) / 2;
 	w->y = o->ay + o->ah - w->h - GAP;
 }
@@ -1438,6 +1438,13 @@ static void wm_render_start(void *d, struct river_window_manager_v1 *m)
 			w->h = w->dh;
 			w->x = ax + (aw - w->w) / 2;
 			w->y = ay + (ah - w->h) / 2;
+		}
+		if (w->drop && visible(w) && w->dw > 0) {
+			/* środek wg prawdziwego rozmiaru: foot zaokrągla okno do pełnych znaków */
+			struct output *o = w->out;
+			w->x = o->ax + (o->aw - w->dw) / 2;
+			if (!w->hiding)
+				w->y = w->drop_to = o->ay + o->ah - w->dh - GAP;
 		}
 		if (w->drop && w->hiding && !w->drop_t0) {
 			w->hiding = false;          /* odjechał — chowamy */
