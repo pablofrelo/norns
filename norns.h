@@ -186,6 +186,7 @@ bool nostromo_busy(uint64_t now);
 int nostromo_jitter(const struct win *w, uint64_t now);
 void nostromo_output_fini(struct output *o);
 void sfx_typing(const char *text, int ms);              /* stukot klawiszy do powiadomienia */
+void sfx_drop(bool up);                                 /* serwo terminala wysuwanego */
 
 /* deco.c */
 void deco_init(struct win *w);

@@ -324,6 +324,45 @@ static void play_file(const char *name, float vol)
 	play(cmd);
 }
 
+/* Serwo grodzi z Nostromo: syk pneumatyki, silniczek zmieniający ton w trakcie
+ * ruchu i głuche „klunk” na końcu. up — wysuwanie (ton rośnie), inaczej chowanie. */
+static void gen_servo(const char *path, bool up)
+{
+	float secs = DROP_MS / 1000.0f + 0.15f, move = DROP_MS / 1000.0f;
+	int n = (int)(RATE * secs);
+	float *x = calloc(n, sizeof *x), ph = 0, ph2 = 0;
+	uint32_t s = up ? 31 : 37;
+	struct biquad hiss_hp = bq(RATE, 2500, true), hiss_lp = bq(RATE, 7000, false);
+	struct biquad mot_lp = bq(RATE, 1800, false), thud_lp = bq(RATE, 300, false);
+	for (int i = 0; i < n; i++) {
+		float t = (float)i / RATE, p = fminf(1, t / move);
+		float e = 1 - (1 - p) * (1 - p) * (1 - p);                  /* to samo hamowanie co ślizg */
+		float f = up ? 140 + 160 * e : 300 - 160 * e;               /* silnik: ton za ruchem */
+		ph += 2 * (float)M_PI * f / RATE;
+		ph2 += 2 * (float)M_PI * f * 2.01f / RATE;
+		float saw = fmodf(ph / (2 * (float)M_PI), 1) * 2 - 1;
+		float menv = t < move ? fminf(1, t * 30) * (1 - 0.7f * e) : 0;
+		float motor = bq_run(&mot_lp, 0.5f * saw + 0.3f * sinf(ph2)) * menv;
+		float henv = expf(-t * 7) * fminf(1, t * 200);              /* syk na starcie */
+		float hiss = bq_run(&hiss_lp, bq_run(&hiss_hp, frand(&s))) * henv;
+		float te = t - move, thud = 0;
+		if (te >= 0) {                                              /* klunk: dociśnięcie */
+			float k = expf(-te * 45);
+			thud = k * (0.9f * sinf(2 * (float)M_PI * (up ? 85 : 65) * te) + 0.6f * bq_run(&thud_lp, frand(&s)));
+			if (te < 0.004f)
+				thud += frand(&s) * (1 - te / 0.004f) * 0.5f;
+		}
+		x[i] = 0.35f * motor + 0.25f * hiss + 0.7f * thud;
+	}
+	wav_write(path, x, n, RATE);
+	free(x);
+}
+
+void sfx_drop(bool up)
+{
+	play_file(up ? "drop_up.wav" : "drop_down.wav", 0.45f);
+}
+
 /* Stukot klawiszy do powiadomienia: jeden klik na każdy pisany znak (spacje
  * cicho), w tym samym tempie co tekst na ekranie. */
 void sfx_typing(const char *text, int ms)
@@ -650,6 +689,10 @@ void nostromo_init(void)
 	gen_static(p, 2.5f);
 	sound_path(p, sizeof p, "off.wav");
 	gen_off(p);
+	sound_path(p, sizeof p, "drop_up.wav");
+	gen_servo(p, true);
+	sound_path(p, sizeof p, "drop_down.wav");
+	gen_servo(p, false);
 	srand((unsigned)time(NULL));
 
 	char sp[300];

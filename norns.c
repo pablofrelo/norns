@@ -734,6 +734,8 @@ static void drop_show(struct win *w, struct output *o)
 	w->drop_from = same ? from : drop_offscreen_y(w);
 	w->drop_to = w->y;
 	w->drop_t0 = anim_on ? now_ms() : 0;
+	if (anim_on)
+		sfx_drop(true);
 	set_focus(w);
 }
 
@@ -752,6 +754,7 @@ static void drop_hide(struct win *w)
 		w->drop_to = w->y = drop_offscreen_y(w);
 		w->drop_t0 = now_ms();
 		w->hiding = true;
+		sfx_drop(false);
 	} else {
 		w->hidden = true;
 		bars_dirty = true;
