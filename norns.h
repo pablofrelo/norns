@@ -87,8 +87,6 @@ struct output {
 	int ax, ay, aw, ah;             /* obszar na okna (bez paneli i paska) */
 	int tag_x[NTAGS + 1];           /* granice klikalnych tagów na pasku */
 	int theme_x;                    /* od tego x klik przełącza motyw */
-	int off_x;                      /* od tego x klik otwiera menu wyłączania */
-	int menu_x[5];                  /* granice opcji menu na pasku */
 	int tray_x0, tray_slot;         /* zasobnik na pasku (piksele bufora) */
 	struct fx *fx;                  /* warstwa efektów trybu Nostromo (nostromo.c) */
 	struct fx *crt;                 /* stałe linie kineskopu w trybie Nostromo */
@@ -200,7 +198,7 @@ void deco_render(struct win *w);                        /* tylko w sekwencji ren
 /* norns.c — akcje wołane z paska */
 void view_tag(struct output *o, int tag);
 void toggle_theme(void);
-void power_action(int i);            /* 0 wyloguj, 1 restart, 2 wyłącz */
+void power_action(int i);            /* 0 wyloguj, 1 restart, 2 wyłącz (norns-ctl power) */
 void expect_popup(int x, int y);     /* po prawym kliku w zasobnik: następne okno to menu */
 
 /* urd.c */

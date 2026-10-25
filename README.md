@@ -25,7 +25,7 @@ and used daily on my own machine.
 - urd: clickable tags, window title, network/WireGuard, CPU, RAM, temperature,
   battery, volume, system tray (StatusNotifierItem: left click activates, middle
   is the secondary action, right click opens the application's menu — drawn by
-  urd from com.canonical.dbusmenu, e.g. nm-applet's network list), clock, theme switch, power menu
+  urd from com.canonical.dbusmenu, e.g. nm-applet's network list), clock, theme switch (the power menu is on Super+Shift+Escape)
 - verdandi, the built-in notification daemon (org.freedesktop.Notifications): notifications
   type themselves out at the top centre of every monitor; critical
   ones stay until clicked, a click runs the default action (if another daemon

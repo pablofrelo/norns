@@ -58,8 +58,6 @@ static struct wl_surface *ptr_surf, *cursor_surf;
 static struct wl_cursor_image *cursor_img;
 static struct wl_cursor_theme *cursor_theme;
 static int ptr_x, ptr_y;
-static bool menu_open;              /* menu wyłączania rozwinięte na pasku */
-static const char *const menu_items[4] = { "WYLOGUJ", "RESTART", "WYŁĄCZ", "ANULUJ" };
 
 /* ---------- rysowanie ---------- */
 
@@ -266,16 +264,11 @@ static void draw_bar(struct output *o, pixman_image_t *img, int w, int h)
 	time_t now = time(NULL);
 	strftime(clock, sizeof clock, "%a %d.%m %H:%M", localtime(&now));
 
-	const char *off = "[ OFF ]";
-	int ow = text_width(off) + 2 * PAD;
-	o->off_x = w - ow;
-	text(img, o->off_x + PAD, 0, h, w, off, menu_open ? t->alarm : t->dim);
-
 	char label[32];
 	snprintf(label, sizeof label, "[ %s ]", t->label);
 	int lw = text_width(label) + 2 * PAD;
-	o->theme_x = o->off_x - lw;
-	text(img, o->theme_x + PAD, 0, h, o->off_x, label, t->accent);
+	o->theme_x = w - lw;
+	text(img, o->theme_x + PAD, 0, h, w, label, t->accent);
 
 	int cx = o->theme_x - text_width(clock) - PAD;
 	text(img, cx, 0, h, o->theme_x, clock, t->fg);
@@ -307,24 +300,6 @@ static void draw_bar(struct output *o, pixman_image_t *img, int w, int h)
 	int right = tray_n ? o->tray_x0 - PAD : cx - 2 * PAD;
 
 	int sx = draw_sensors(img, right, h, x);
-
-	/* menu wyłączania zamiast tytułu */
-	if (menu_open) {
-		int mx = x + 2 * PAD;
-		for (int i = 0; i < 5; i++)
-			o->menu_x[i] = mx;              /* niewidoczne opcje nie dają się kliknąć */
-		for (int i = 0; i < 4; i++) {
-			int iw = text_width(menu_items[i]) + 2 * PAD;
-			o->menu_x[i] = mx;
-			if (mx + iw > sx - PAD)
-				break;
-			rect(img, mx, 2, iw, h - 5, i == 2 ? t->alarm : t->line);
-			text(img, mx + PAD, 0, h, mx + iw, menu_items[i], i == 2 ? t->bg : t->fg);
-			mx += iw + PAD;
-			o->menu_x[i + 1] = mx - PAD;
-		}
-		return;
-	}
 
 	/* tytuł okna z fokusem — tylko na jego monitorze */
 	if (focused && focused->out == o && focused->tag == o->tag && focused->title)
@@ -1096,21 +1071,6 @@ static void ptr_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t 
 		}
 		if (button != BTN_LEFT)
 			return;
-		if (bx >= o->off_x) {
-			menu_open = !menu_open;
-			urd_redraw_bars();
-			return;
-		}
-		if (menu_open) {
-			for (int i = 0; i < 4; i++)
-				if (bx >= o->menu_x[i] && bx < o->menu_x[i + 1]) {
-					menu_open = false;
-					urd_redraw_bars();
-					if (i < 3)
-						power_action(i);
-					return;
-				}
-		}
 		if (bx >= o->theme_x) {
 			toggle_theme();
 			return;
