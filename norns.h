@@ -120,6 +120,8 @@ struct win {
 	struct output *fs_out;          /* monitor, o który prosiło okno */
 	bool dragging;                  /* łapane myszą: bez animacji dojazdu */
 	bool drop, hidden, hiding;      /* terminal wysuwany (Super+`): schowany / chowa się */
+	int drop_from, drop_to;         /* wysuwanie: skąd i dokąd jedzie (y) */
+	uint64_t drop_t0;
 	int drag_dx, drag_dy;           /* kafel niesiony za kursorem */
 
 	/* animacja (anim.c) */

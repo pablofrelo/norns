@@ -13,9 +13,10 @@
 #define SLIDE_MS  140               /* ślizg przy zmianie tagu */
 #define MOVE_MS   120               /* dojazd okna na nowe miejsce */
 #define OPEN_MS   160               /* otwieranie okna (kineskop) */
-#define DROP_W        70            /* terminal wysuwany: % szerokości monitora */
+#define DROP_W        50            /* terminal wysuwany: % szerokości monitora */
 #define DROP_H        50            /* i % wysokości */
 #define DROP_APP_ID   "norns-drop"
+#define DROP_MS       500           /* wysuwanie od dołu / chowanie */
 #define NOTE_W        640           /* szerokość powiadomienia (logiczne px) */
 #define NOTE_FONT     150           /* font powiadomień: % fontu paska (Spleen 16 → 24) */
 #define NOTE_MS       6000          /* jak długo wisi zwykłe powiadomienie */
@@ -87,7 +88,7 @@ static const char *const vol_mute[] = { "wpctl", "set-mute", "@DEFAULT_AUDIO_SIN
 
 static const struct key keys[] = {
 	{ SUPER,        XKB_KEY_Return, SPAWN,     0, NULL },  /* NULL = terminal motywu */
-	{ SUPER,        XKB_KEY_grave,  DROP_TOGGLE, 0, NULL },  /* terminal wysuwany z góry */
+	{ SUPER,        XKB_KEY_grave,  DROP_TOGGLE, 0, NULL },  /* terminal wysuwany od dołu */
 	{ SUPER,        XKB_KEY_slash,  HELP,      0, NULL },  /* ściąga ze skrótami */
 	{ SUPER,        XKB_KEY_F1,     HELP,      0, NULL },
 	{ SUPER,        XKB_KEY_d,      SPAWN,     1, NULL },  /* 1 = uruchamianie programów motywu */
@@ -123,7 +124,7 @@ static const struct key keys[] = {
 /* Ściąga (Super+/ albo Super+F1) — przy zmianie skrótów popraw też tutaj. */
 static const char *const help_lines[] = {
 	"Super+Return          terminal",
-	"Super+`               terminal wysuwany z góry (to samo chowa)",
+	"Super+`               terminal wysuwany od dołu (to samo chowa)",
 	"Super+D               uruchom program",
 	"Super+B / E           przeglądarka / pliki",
 	"Super+Q               zamknij okno",

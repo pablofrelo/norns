@@ -704,35 +704,36 @@ void toggle_theme(void)
 static struct win *drop_win;
 static bool drop_spawning;
 
-/* Cel na monitorze: wyśrodkowany, tuż pod paskiem. */
+/* Cel na monitorze: wyśrodkowany, nad dolną krawędzią. */
 static void drop_place(struct win *w)
 {
 	struct output *o = w->out;
 	w->w = o->aw * DROP_W / 100;
 	w->h = o->ah * DROP_H / 100;
 	w->x = o->ax + (o->aw - w->w) / 2;
-	w->y = o->ay + GAP;
+	w->y = o->ay + o->ah - w->h - GAP;
 }
 
+/* Pod dolną krawędzią monitora (anim przycina okno do monitora). */
 static int drop_offscreen_y(struct win *w)
 {
-	return w->out->y - w->h - 2 * (BORDER + w->deco_r) - 4;
+	return w->out->y + w->out->h + BORDER + w->deco_r + 4;
 }
 
-/* Pokaż na monitorze o: zjeżdża z górnej krawędzi. */
+/* Pokaż na monitorze o: wyjeżdża spod dolnej krawędzi. */
 static void drop_show(struct win *w, struct output *o)
 {
+	int from = w->out && w->drop_t0 ? w->by : 0;    /* przerwane chowanie: jedzie z miejsca */
+	bool same = w->out == o && w->drop_t0;
 	if (w->out)
 		detach(w);
 	attach(w, o, o->tag);
 	w->hidden = w->hiding = false;
 	w->placed = true;
 	drop_place(w);
-	if (anim_on) {                      /* start nad monitorem, anim dowiezie na miejsce */
-		w->shown = true;
-		w->bx = w->tx = w->x;
-		w->by = w->ty = drop_offscreen_y(w);
-	}
+	w->drop_from = same ? from : drop_offscreen_y(w);
+	w->drop_to = w->y;
+	w->drop_t0 = anim_on ? now_ms() : 0;
 	set_focus(w);
 }
 
@@ -746,8 +747,10 @@ static void drop_hide(struct win *w)
 			break;
 		}
 	set_focus(next);
-	if (anim_on) {
-		w->y = drop_offscreen_y(w);     /* odjeżdża w górę, potem znika (render) */
+	if (anim_on) {                      /* zjeżdża w dół, potem znika (render) */
+		w->drop_from = w->by;
+		w->drop_to = w->y = drop_offscreen_y(w);
+		w->drop_t0 = now_ms();
 		w->hiding = true;
 	} else {
 		w->hidden = true;
@@ -883,7 +886,7 @@ static void run(const struct key *k)
 		river_window_manager_v1_manage_dirty(wm);
 		break;
 	case DROP_TOGGLE:
-		drop_toggle(focus_output());
+		drop_toggle(active_output());       /* monitor pod kursorem — też pusty */
 		river_window_manager_v1_manage_dirty(wm);
 		break;
 	}
@@ -1436,7 +1439,7 @@ static void wm_render_start(void *d, struct river_window_manager_v1 *m)
 			w->x = ax + (aw - w->w) / 2;
 			w->y = ay + (ah - w->h) / 2;
 		}
-		if (w->drop && w->hiding && w->shown && !w->move_t0 && w->by == w->y) {
+		if (w->drop && w->hiding && !w->drop_t0) {
 			w->hiding = false;          /* odjechał — chowamy */
 			w->hidden = true;
 			bars_dirty = true;

@@ -62,7 +62,8 @@ bool anim_busy(uint64_t now)
 		return true;
 	struct win *w;
 	wl_list_for_each(w, &windows, link)
-		if ((w->move_t0 && now < w->move_t0 + MOVE_MS) || (w->open_t0 && now < w->open_t0 + OPEN_MS))
+		if ((w->move_t0 && now < w->move_t0 + MOVE_MS) || (w->open_t0 && now < w->open_t0 + OPEN_MS) ||
+		    (w->drop_t0 && now < w->drop_t0 + DROP_MS + 20) || w->hiding)   /* hiding: klatka na schowanie */
 			return true;
 	return false;
 }
@@ -94,7 +95,19 @@ void anim_render_window(struct win *w, uint64_t now)
 	}
 
 	/* pozycja bazowa: cel z layoutu, ewentualnie w trakcie dojazdu */
-	if (vis && w->dragging) {           /* łapane myszą: dokładnie pod kursorem */
+	if (vis && w->drop && w->drop_t0) {  /* terminal wysuwany: własny ślizg w pionie */
+		double p = progress(w->drop_t0, now, DROP_MS);
+		w->bx = w->tx = w->x;
+		w->by = lerp(w->drop_from, w->drop_to, ease(p));
+		w->ty = w->y;
+		w->move_t0 = 0;
+		if (p >= 1.0) {
+			w->drop_t0 = 0;
+			w->by = w->drop_to;
+		}
+		if (!w->ever_shown && w->dw > 0)
+			w->ever_shown = true;           /* bez kineskopu — wystarczy wysuwanie */
+	} else if (vis && w->dragging) {    /* łapane myszą: dokładnie pod kursorem */
 		w->bx = w->x + w->drag_dx;
 		w->by = w->y + w->drag_dy;
 		w->tx = w->x;
