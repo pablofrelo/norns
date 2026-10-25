@@ -204,10 +204,22 @@ static void draw_bar(struct output *o, pixman_image_t *img, int w, int h)
 	for (int i = 0; i < NTAGS; i++) {
 		char label[2] = { '1' + i, 0 };
 		int cw = text_width(label) + 2 * PAD;
-		uint32_t fg = o->roots[i] ? t->fg : t->dim;
+		bool busy = o->roots[i] != NULL;          /* kafle albo pływające */
+		struct win *wn;
+		wl_list_for_each(wn, &windows, link)
+			if (wn->out == o && wn->tag == i)
+				busy = true;
+		uint32_t fg = busy ? t->fg : t->dim;
 		if (i == o->tag) {
 			rect(img, x, 0, cw, h - 1, t->focus);
 			fg = t->bg;
+		} else if (busy) {                         /* zajęty: ramka dookoła numeru */
+			int m = h / 8, lw = h / 22 > 1 ? h / 22 : 1;
+			int fx = x + m / 2, fy = m, fw = cw - m, fh = h - 1 - 2 * m;
+			rect(img, fx, fy, fw, lw, t->focus);
+			rect(img, fx, fy + fh - lw, fw, lw, t->focus);
+			rect(img, fx, fy, lw, fh, t->focus);
+			rect(img, fx + fw - lw, fy, lw, fh, t->focus);
 		}
 		o->tag_x[i] = x;
 		text(img, x + PAD, 0, h, w, label, fg);
