@@ -81,6 +81,7 @@ static const char *const vol_mute[] = { "wpctl", "set-mute", "@DEFAULT_AUDIO_SIN
 /* ---------- skróty ---------- */
 
 #define SUPER RIVER_SEAT_V1_MODIFIERS_MOD4
+#undef CTRL                         /* glibc ma makro CTRL(x) w ttydefaults.h */
 #define CTRL  RIVER_SEAT_V1_MODIFIERS_CTRL
 #define TAGKEYS(n) \
 	{ SUPER,        XKB_KEY_##n, VIEW,     (n) - 1, NULL }, \
