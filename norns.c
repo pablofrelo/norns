@@ -830,6 +830,24 @@ static void screenshot(int kind)
 	spawn((const char *const[]){ "/bin/sh", "-c", script, NULL });
 }
 
+/* ---------- wyłącznik (Super+Shift+Escape) ---------- */
+
+/* Wybór w fuzzelu motywu; wybrana pozycja wraca przez norns-ctl power. */
+static void power_menu(void)
+{
+	char script[2048], *p = script, *end = script + sizeof script;
+	p += snprintf(p, end - p, "c=$(printf 'WYLOGUJ\\nRESTART\\nWYŁĄCZ\\n' |");
+	for (const char *const *a = THEME->run; *a && p < end - 64; a++)
+		p += snprintf(p, end - p, " '%s'", *a);       /* argumenty fuzzela bez apostrofów */
+	struct output *o = active_output();
+	if (o && p < end - 64)
+		p += snprintf(p, end - p, " '--output=%s'", conn_of(o));
+	snprintf(p, end - p, " --dmenu '--prompt=OFF  ' --lines=3 --width=24) || exit 0; "
+	         "case \"$c\" in WYLOGUJ) a=logout;; RESTART) a=reboot;; WYŁĄCZ) a=poweroff;; *) exit 0;; esac; "
+	         "exec \"$HOME/.local/bin/norns-ctl\" power $a");
+	spawn((const char *const[]){ "/bin/sh", "-c", script, NULL });
+}
+
 /* Wołane z eventu pressed — zmieniamy tylko nasze dane, requesty idą w manage. */
 static void run(const struct key *k)
 {
@@ -935,6 +953,9 @@ static void run(const struct key *k)
 		break;
 	case SHOT:
 		screenshot(k->arg);
+		break;
+	case POWER_MENU:
+		power_menu();
 		break;
 	case DROP_TOGGLE:
 		drop_toggle(active_output());       /* monitor pod kursorem — też pusty */
@@ -1218,6 +1239,12 @@ static const char *ctl_run(const char *cmd, char *out, size_t n)
 		}
 		river_window_manager_v1_manage_dirty(wm);
 		return "ok";
+	} else if (!strcmp(verb, "power")) {
+		int i = !strcmp(arg, "logout") ? 0 : !strcmp(arg, "reboot") ? 1 : !strcmp(arg, "poweroff") ? 2 : -1;
+		if (i < 0)
+			return "błąd: logout, reboot albo poweroff";
+		power_action(i);
+		return "ok";
 	} else if (!strcmp(verb, "drop")) {
 		k.act = DROP_TOGGLE;
 	} else if (!strcmp(verb, "float")) {
@@ -1234,6 +1261,7 @@ static const char *ctl_run(const char *cmd, char *out, size_t n)
 	} else {
 		return "polecenia: status | view N | send N | output next|prev | send-output next|prev | "
 		       "theme [toggle|gruvbox|muthur] | nostromo [on|off] | anim [on|off] | drop | float | "
+		       "power logout|reboot|poweroff | "
 		       "fullscreen | close | launcher | help";
 	}
 	run(&k);

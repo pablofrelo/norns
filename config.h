@@ -108,6 +108,7 @@ static const struct key keys[] = {
 	{ SUPER | SHIFT, XKB_KEY_H,     SPAWN,     0, hadley },  /* jak river poda Shift */
 	{ SUPER,        XKB_KEY_q,      CLOSE,     0, NULL },
 	{ SUPER,        XKB_KEY_Escape, QUIT,      0, NULL },  /* wyjście z norns, nie z rivera */
+	{ SUPER | SHIFT, XKB_KEY_Escape, POWER_MENU, 0, NULL }, /* wyloguj / restart / wyłącz */
 	{ SUPER,        XKB_KEY_t,      THEME_TOGGLE, 0, NULL },
 	{ SUPER,        XKB_KEY_f,      FLOAT_TOGGLE, 0, NULL },
 	{ SUPER,        XKB_KEY_a,      ANIM_TOGGLE,  0, NULL },  /* efekty wł./wył. */
@@ -155,6 +156,7 @@ static const char *const help_lines[] = {
 	"Super+lewy przycisk   przesuń / zamień kafle",
 	"Super+prawy przycisk  rozmiar / proporcje podziału",
 	"Super+Escape          wyjdź z norns",
+	"Super+Shift+Escape    wyłącznik: wyloguj / restart / wyłącz",
 	"Print                 zrzut monitora (plik + schowek)",
 	"Shift+Print           zrzut zaznaczonego obszaru",
 	"Super+Print           zrzut okna z fokusem",

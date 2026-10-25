@@ -290,7 +290,7 @@ void ctl_init(struct sd_bus *bus);     /* norns.c: polecenia z norns-ctl */   /*
 
 enum action { SPAWN, CLOSE, QUIT, VIEW, SEND_TAG, FOCUS_OUT, SEND_OUT, THEME_TOGGLE, FLOAT_TOGGLE,
               ANIM_TOGGLE, FULLSCREEN_TOGGLE, VOLUME, FOCUS_DIR, SWAP_DIR, NOSTROMO_TOGGLE,
-              HELP, DROP_TOGGLE, SHOT };
+              HELP, DROP_TOGGLE, SHOT, POWER_MENU };
 enum { LEFT, DOWN, UP, RIGHT };
 
 struct key {

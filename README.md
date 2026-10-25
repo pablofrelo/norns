@@ -69,6 +69,7 @@ the source directory and falls back to rhine when it exits.
 | Print / Shift+Print / Super+Print | screenshot of the monitor / a region / the focused window (grim, slurp; saved to ~/Pictures/Screenshots and copied) |
 | Super+B / Super+E | browser / file manager |
 | Super+Q | close window |
+| Super+Shift+Escape | power menu: log out / reboot / power off (fuzzel) |
 | Super+H/J/K/L | focus left/down/up/right (across monitors) |
 | Super+Ctrl+H/J/K/L | swap with the neighbour in that direction |
 | Super+1…9 | show tag |
@@ -97,6 +98,7 @@ Scripts and other programs can drive norns over D-Bus (installed with
     norns-ctl theme gruvbox     # or muthur, or toggle
     norns-ctl nostromo off      # on, off, or toggle when omitted
     norns-ctl drop              # slide-up terminal
+    norns-ctl power poweroff    # or logout, reboot
 
 `norns-ctl` with no arguments lists every command.
 
