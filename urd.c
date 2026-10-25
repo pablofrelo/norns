@@ -270,8 +270,11 @@ static void draw_bar(struct output *o, pixman_image_t *img, int w, int h)
 	o->theme_x = w - lw;
 	text(img, o->theme_x + PAD, 0, h, w, label, t->accent);
 
-	int cx = o->theme_x - text_width(clock) - PAD;
-	text(img, cx, 0, h, o->theme_x, clock, t->fg);
+	/* zegar w odwróconych kolorach, jak aktywny tag — widać go od razu */
+	int cw = text_width(clock) + 2 * PAD;
+	int cx = o->theme_x - cw;
+	rect(img, cx, 0, cw, h - 1, t->focus);
+	text(img, cx + PAD, 0, h, o->theme_x, clock, t->bg);
 
 	/* zasobnik: ikonki tuż przed zegarem */
 	int slot = h, isz = h - 2 * (h / 8);
