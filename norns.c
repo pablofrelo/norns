@@ -1818,7 +1818,12 @@ static void wm_manage_start(void *d, struct river_window_manager_v1 *m)
 				w->ph = w->h;
 			}
 		} else if (w->drop) {
-			if (w->w != w->pw || w->h != w->ph) {
+			/* rozmiar zawsze z bieżącego obszaru: po restarcie norns pierwsza sekwencja
+			 * nie zna jeszcze obszaru, a okno ma rozmiar po poprzednim WM (np. cały ekran) */
+			int aw = w->out->aw > 0 ? w->out->aw : w->out->w, ah = w->out->ah > 0 ? w->out->ah : w->out->h;
+			w->w = DROP_W < aw * 9 / 10 ? DROP_W : aw * 9 / 10;
+			w->h = DROP_H < ah * 9 / 10 ? DROP_H : ah * 9 / 10;
+			if (w->w > 0 && w->h > 0 && (w->w != w->pw || w->h != w->ph)) {
 				river_window_v1_propose_dimensions(w->rw, w->w, w->h);
 				w->pw = w->w;
 				w->ph = w->h;
