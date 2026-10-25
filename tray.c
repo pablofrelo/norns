@@ -396,6 +396,7 @@ int tray_init(void)
 		return -1;
 	}
 	notify_init(bus);                   /* powiadomienia na tej samej magistrali */
+	ctl_init(bus);                      /* i polecenia z norns-ctl */
 	snprintf(host_name, sizeof host_name, "org.kde.StatusNotifierHost-%d", getpid());
 	sd_bus_request_name(bus, host_name, 0);
 	sd_bus_match_signal(bus, NULL, "org.freedesktop.DBus", "/org/freedesktop/DBus",

@@ -46,3 +46,4 @@ clean:
 
 install: norns
 	install -Dm755 norns $(HOME)/.local/bin/norns
+	install -Dm755 norns-ctl $(HOME)/.local/bin/norns-ctl

@@ -1,0 +1,7 @@
+#!/bin/sh
+# norns-ctl — sterowanie norns ze skryptów i skrótów innych programów.
+#   norns-ctl status | view 3 | send 3 | output next | theme muthur | nostromo off | drop | help
+# Bez argumentów wypisuje listę poleceń.
+[ $# -eq 0 ] && set -- "?"
+busctl --user call io.github.pablofrelo.Norns /io/github/pablofrelo/Norns \
+	io.github.pablofrelo.Norns Run s "$*" | sed 's/^s "//; s/"$//'

@@ -249,7 +249,8 @@ bool notify_busy(uint64_t now);
 void notify_click(int i);
 int note_type_ms(size_t chars);
 size_t note_chars(const struct note *n);   /* znaki (nie bajty) tytułu i treści */
-struct output *focus_output(void);   /* norns.c: monitor z fokusem (albo pod kursorem) */
+struct output *focus_output(void);
+void ctl_init(struct sd_bus *bus);     /* norns.c: polecenia z norns-ctl */   /* norns.c: monitor z fokusem (albo pod kursorem) */
 
 /* ---------- skróty i reguły (definicje w config.h) ---------- */
 

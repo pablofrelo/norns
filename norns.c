@@ -16,6 +16,8 @@
 #include <unistd.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
 #define NORNS_MAIN                  /* config.h: tablice tylko w tym pliku */
+#include <errno.h>
+#include <systemd/sd-bus.h>
 #include "norns.h"
 
 int theme_idx;
@@ -1103,6 +1105,126 @@ static void lo_non_exclusive_area(void *data, struct river_layer_shell_output_v1
 static const struct river_layer_shell_output_v1_listener lo_listener = {
 	.non_exclusive_area = lo_non_exclusive_area,
 };
+
+/* ---------- norns-ctl: sterowanie przez D-Bus ---------- */
+
+#define CTL_NAME  "io.github.pablofrelo.Norns"
+#define CTL_PATH  "/io/github/pablofrelo/Norns"
+
+static const char *conn_of(struct output *o)
+{
+	struct wlout *wo;
+	wl_list_for_each(wo, &wlouts, link)
+		if (wo->name == o->wl_name && wo->conn)
+			return wo->conn;
+	return "?";
+}
+
+/* Stan dla skryptów: motyw, tryby, a dla każdego monitora widoczny tag i zajęte. */
+static void ctl_status(char *out, size_t n)
+{
+	int len = snprintf(out, n, "theme=%s nostromo=%s anim=%s focus=%s", THEME->name,
+	                   nostromo_on ? "on" : "off", anim_on ? "on" : "off",
+	                   focused && focused->app_id ? focused->app_id : "-");
+	struct output *o;
+	wl_list_for_each(o, &outputs, link) {
+		char busy[NTAGS + 1] = { 0 };
+		for (int i = 0; i < NTAGS; i++) {
+			bool b = o->roots[i] != NULL;
+			struct win *w;
+			wl_list_for_each(w, &windows, link)
+				if (w->out == o && w->tag == i && !w->hidden)
+					b = true;
+			busy[i] = b ? '1' + i : '-';
+		}
+		if (len < (int)n)
+			len += snprintf(out + len, n - len, " %s:%d:%s", conn_of(o), o->tag + 1, busy);
+	}
+}
+
+/* Polecenie tekstem → ta sama akcja co skrót. */
+static const char *ctl_run(const char *cmd, char *out, size_t n)
+{
+	char verb[32] = "", arg[32] = "";
+	sscanf(cmd, "%31s %31s", verb, arg);
+	struct key k = { 0 };
+	bool on = !strcmp(arg, "on"), off = !strcmp(arg, "off"), want;
+
+	if (!strcmp(verb, "status")) {
+		ctl_status(out, n);
+		return out;
+	} else if (!strcmp(verb, "view") || !strcmp(verb, "send")) {
+		int t = atoi(arg);
+		if (t < 1 || t > NTAGS)
+			return "błąd: tag 1–9";
+		k.act = verb[0] == 'v' ? VIEW : SEND_TAG;
+		k.arg = t - 1;
+	} else if (!strcmp(verb, "output") || !strcmp(verb, "send-output")) {
+		if (strcmp(arg, "next") && strcmp(arg, "prev"))
+			return "błąd: next albo prev";
+		k.act = verb[0] == 'o' ? FOCUS_OUT : SEND_OUT;
+		k.arg = !strcmp(arg, "next") ? 1 : -1;
+	} else if (!strcmp(verb, "theme")) {
+		if (*arg && strcmp(arg, "toggle") && strcmp(arg, themes[0].name) && strcmp(arg, themes[1].name))
+			return "błąd: toggle, gruvbox albo muthur";
+		if (!*arg || !strcmp(arg, "toggle") || strcmp(arg, THEME->name))
+			toggle_theme();
+		return "ok";
+	} else if (!strcmp(verb, "nostromo") || !strcmp(verb, "anim")) {
+		bool cur = verb[0] == 'n' ? nostromo_on : anim_on;
+		want = on ? true : off ? false : !cur;
+		if (want != cur) {
+			if (verb[0] == 'n')
+				nostromo_toggle();
+			else
+				anim_on = want;
+		}
+		river_window_manager_v1_manage_dirty(wm);
+		return "ok";
+	} else if (!strcmp(verb, "drop")) {
+		k.act = DROP_TOGGLE;
+	} else if (!strcmp(verb, "float")) {
+		k.act = FLOAT_TOGGLE;
+	} else if (!strcmp(verb, "fullscreen")) {
+		k.act = FULLSCREEN_TOGGLE;
+	} else if (!strcmp(verb, "close")) {
+		k.act = CLOSE;
+	} else if (!strcmp(verb, "help")) {
+		k.act = HELP;
+	} else if (!strcmp(verb, "launcher")) {
+		k.act = SPAWN;
+		k.arg = 1;
+	} else {
+		return "polecenia: status | view N | send N | output next|prev | send-output next|prev | "
+		       "theme [toggle|gruvbox|muthur] | nostromo [on|off] | anim [on|off] | drop | float | "
+		       "fullscreen | close | launcher | help";
+	}
+	run(&k);
+	river_window_manager_v1_manage_dirty(wm);
+	return "ok";
+}
+
+static int m_ctl(sd_bus_message *m, void *ud, sd_bus_error *err)
+{
+	const char *cmd;
+	char out[512];
+	if (sd_bus_message_read(m, "s", &cmd) < 0)
+		return -EINVAL;
+	return sd_bus_reply_method_return(m, "s", ctl_run(cmd, out, sizeof out));
+}
+
+static const sd_bus_vtable ctl_vtable[] = {
+	SD_BUS_VTABLE_START(0),
+	SD_BUS_METHOD("Run", "s", "s", m_ctl, SD_BUS_VTABLE_UNPRIVILEGED),
+	SD_BUS_VTABLE_END,
+};
+
+void ctl_init(sd_bus *bus)
+{
+	if (sd_bus_add_object_vtable(bus, NULL, CTL_PATH, CTL_NAME, ctl_vtable, NULL) < 0 ||
+	    sd_bus_request_name(bus, CTL_NAME, 0) < 0)
+		fprintf(stderr, "norns: norns-ctl niedostępny (działa drugi norns?)\n");
+}
 
 /* ---------- klawisze ---------- */
 

@@ -83,6 +83,21 @@ the source directory and falls back to rhine when it exits.
 | volume keys | volume via wpctl |
 | Super+Esc | quit norns (river keeps running) |
 
+## norns-ctl
+
+Scripts and other programs can drive norns over D-Bus (installed with
+`make install`):
+
+    norns-ctl status            # theme=muthur nostromo=on ... DP-9:1:12---6---
+    norns-ctl view 3            # show tag 3 on the monitor under the pointer
+    norns-ctl send 3            # send the focused window to tag 3
+    norns-ctl output next       # focus the next monitor
+    norns-ctl theme gruvbox     # or muthur, or toggle
+    norns-ctl nostromo off      # on, off, or toggle when omitted
+    norns-ctl drop              # slide-up terminal
+
+`norns-ctl` with no arguments lists every command.
+
 ## Nostromo mode
 
 Super+Ctrl+A. Every half hour the screen glitches like an old CRT with a short
