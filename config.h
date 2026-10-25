@@ -25,7 +25,7 @@
 /* Font i paleta foota ustalane są przy starcie okna — stąd osobna komenda na motyw. */
 static const char *const term_gruvbox[] = { "foot", NULL };
 static const char *const term_muthur[] = {
-	"foot", "-o", "main.font=Spleen:pixelsize=16", "-o", "main.initial-color-theme=light", NULL
+	"foot", "-o", "main.font=Spleen:pixelsize=24", "-o", "main.initial-color-theme=light", NULL
 };
 
 /* Uruchamianie programów (Super+D): fuzzel w kolorach motywu. */
