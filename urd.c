@@ -614,6 +614,7 @@ void urd_output_init(struct output *o)
 	surf_init(&o->bar, o, true);           /* pasek ostry przy skali ułamkowej */
 	surf_init(&o->wall, o, false);
 	surf_init(&o->note, o, true);
+	surf_init(&o->menu, o, true);
 	o->note.alpha = true;                  /* przerwy między powiadomieniami przezroczyste */
 	o->note.font_pct = NOTE_FONT;
 }
@@ -623,6 +624,7 @@ void urd_output_fini(struct output *o)
 	surf_fini(&o->bar);
 	surf_fini(&o->wall);
 	surf_fini(&o->note);
+	surf_fini(&o->menu);
 	if (o->sky) {
 		sky_free_bufs(o->sky);
 		free(o->sky->stars);
@@ -660,6 +662,125 @@ static void surf_draw(struct surf *s, struct output *o, bool sync,
 	s->drawn_h = s->h;
 	s->drawn_scale = scale;
 	s->dirty = false;
+}
+
+/* ---------- menu aplikacji z zasobnika ---------- */
+
+static void menu_label(const struct tmenu_entry *e, char *out, size_t n)
+{
+	const char *mark = e->toggle == 1 ? (e->checked ? "[x] " : "[ ] ") :
+	                   e->toggle == 2 ? (e->checked ? "(*) " : "( ) ") : "";
+	snprintf(out, n, "%s%s%s", mark, e->label, e->submenu ? "  >" : "");
+}
+
+/* Szerokość i wysokość w pikselach bieżącego fontu (bufor albo skala 1). */
+static void menu_size(int *w, int *h, int *rowh, int *sep)
+{
+	int lh = font->height;
+	*rowh = lh + PAD / 2;
+	*sep = PAD;
+	int mw = 0, hh = PAD;
+	char lab[160];
+	for (int r = 0; r < tmenu.nrows; r++) {
+		int i = tmenu.rows[r];
+		if (i >= 0 && tmenu.e[i].separator) {
+			hh += *sep;
+			continue;
+		}
+		if (i < 0)
+			snprintf(lab, sizeof lab, "< WSTECZ");
+		else
+			menu_label(&tmenu.e[i], lab, sizeof lab);
+		int tw = text_width(lab);
+		if (tw > mw)
+			mw = tw;
+		hh += *rowh;
+	}
+	*w = mw + 4 * PAD;
+	if (*w < 12 * PAD)
+		*w = 12 * PAD;
+	*h = hh + PAD;
+}
+
+/* Wiersz pod kursorem (y logiczne w powierzchni menu). */
+static int menu_row(struct output *o, int ly)
+{
+	int scale = o->menu.vp ? o->menu.scale120 : 120;
+	int by = ly * scale / 120, y = o->menu_pad;
+	for (int r = 0; r < tmenu.nrows; r++) {
+		int i = tmenu.rows[r];
+		int h = i >= 0 && tmenu.e[i].separator ? o->menu_pad : o->menu_rowh;
+		if (by >= y && by < y + h)
+			return i >= 0 && tmenu.e[i].separator ? -1 : r;
+		y += h;
+	}
+	return -1;
+}
+
+static void draw_menu(struct output *o, pixman_image_t *img, int w, int h)
+{
+	const struct theme *t = THEME;
+	int bw = w > 600 ? 3 : 2, rowh, sep, mw, mh;
+	menu_size(&mw, &mh, &rowh, &sep);
+	o->menu_rowh = rowh;
+	o->menu_pad = PAD;
+	rect(img, 0, 0, w, h, t->focus);
+	rect(img, bw, bw, w - 2 * bw, h - 2 * bw, t->bg);
+	int y = PAD;
+	char lab[160];
+	for (int r = 0; r < tmenu.nrows; r++) {
+		int i = tmenu.rows[r];
+		if (i >= 0 && tmenu.e[i].separator) {
+			rect(img, 2 * PAD, y + sep / 2, w - 4 * PAD, 1, t->line);
+			y += sep;
+			continue;
+		}
+		bool on = r == tmenu.hover, dis = i >= 0 && !tmenu.e[i].enabled;
+		if (on && !dis)
+			rect(img, bw, y, w - 2 * bw, rowh, t->focus);
+		if (i < 0)
+			snprintf(lab, sizeof lab, "< WSTECZ");
+		else
+			menu_label(&tmenu.e[i], lab, sizeof lab);
+		uint32_t c = dis ? t->dim : on ? t->bg : i < 0 ? t->dim : t->fg;
+		text(img, 2 * PAD, y, rowh, w - PAD, lab, c);
+		y += rowh;
+	}
+}
+
+static void menu_render(struct output *o)
+{
+	struct surf *s = &o->menu;
+	if (!tmenu.open || tmenu.out != o) {
+		if (o->menu_shown) {
+			river_shell_surface_v1_sync_next_commit(s->ss);
+			wl_surface_attach(s->wl, NULL, 0, 0);
+			wl_surface_commit(s->wl);
+			o->menu_shown = false;
+			s->drawn_w = s->drawn_h = 0;
+		}
+		return;
+	}
+	int scale = s->vp ? s->scale120 : 120, rowh, sep, bw, bh;
+	font = font_at(scale);
+	PAD = PAD_BASE * scale / 120;
+	menu_size(&bw, &bh, &rowh, &sep);
+	font = fonts[theme_idx];
+	PAD = PAD_BASE;
+	s->w = (bw * 120 + scale - 1) / scale;
+	s->h = (bh * 120 + scale - 1) / scale;
+	s->x = tmenu.x - s->w / 2;                                /* pod kursorem, nie za monitor */
+	if (s->x + s->w > o->x + o->w - BORDER)
+		s->x = o->x + o->w - BORDER - s->w;
+	if (s->x < o->x + BORDER)
+		s->x = o->x + BORDER;
+	s->y = o->bar.y + o->bar.h;
+	if (!o->menu_shown)
+		s->dirty = true;
+	surf_draw(s, o, true, draw_menu);
+	river_node_v1_set_position(s->node, s->x, s->y);
+	river_node_v1_place_top(s->node);
+	o->menu_shown = true;
 }
 
 /* ---------- powiadomienia ---------- */
@@ -851,6 +972,7 @@ void urd_render(struct output *o)
 	river_node_v1_place_bottom(o->wall.node);   /* tapeta pod wszystkim */
 	river_node_v1_place_top(o->bar.node);       /* pasek nad wszystkim */
 	notes_render(o);
+	menu_render(o);
 }
 
 /* Zegar i sensory zmieniają się bez udziału okien — commit od razu, bez sync. */
@@ -876,6 +998,19 @@ static void ptr_enter(void *d, struct wl_pointer *p, uint32_t serial, struct wl_
 
 static void ptr_leave(void *d, struct wl_pointer *p, uint32_t serial, struct wl_surface *s)
 {
+	struct output *o;
+	wl_list_for_each(o, &outputs, link) {
+		if (!tmenu.open || tmenu.out != o)
+			continue;
+		if (o->menu.wl == s)
+			tmenu_close();                                    /* kursor wyjechał z menu — zamykamy */
+		else if (o->bar.wl == s) {                            /* z paska: zostaw tylko w dół, do menu */
+			int gx = o->bar.x + ptr_x;
+			bool down = ptr_y >= o->bar.h - 3 && gx >= o->menu.x && gx < o->menu.x + o->menu.w;
+			if (!down)
+				tmenu_close();
+		}
+	}
 	ptr_surf = NULL;
 }
 
@@ -883,6 +1018,16 @@ static void ptr_motion(void *d, struct wl_pointer *p, uint32_t time, wl_fixed_t 
 {
 	ptr_x = wl_fixed_to_int(x);
 	ptr_y = wl_fixed_to_int(y);
+	struct output *o;
+	wl_list_for_each(o, &outputs, link)
+		if (o->menu.wl == ptr_surf && tmenu.open) {             /* podświetlenie wiersza */
+			int r = menu_row(o, ptr_y);
+			if (r != tmenu.hover) {
+				tmenu.hover = r;
+				o->menu.dirty = true;
+				river_window_manager_v1_manage_dirty(wm);
+			}
+		}
 }
 
 static void ptr_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t time, uint32_t button, uint32_t state)
@@ -891,6 +1036,11 @@ static void ptr_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t 
 		return;
 	struct output *o;
 	wl_list_for_each(o, &outputs, link) {
+		if (o->menu.wl == ptr_surf) {                         /* klik w menu z zasobnika */
+			if (button == BTN_LEFT)
+				tmenu_activate(menu_row(o, ptr_y));
+			return;
+		}
 		if (o->note.wl == ptr_surf) {                         /* klik w powiadomienie */
 			int by = ptr_y * (o->note.vp ? o->note.scale120 : 120) / 120;
 			for (int i = 0; i < notes_n; i++)
@@ -904,10 +1054,8 @@ static void ptr_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t 
 		int bx = ptr_x * (o->bar.vp ? o->bar.scale120 : 120) / 120;
 		if (tray_n && bx >= o->tray_x0 && bx < o->tray_x0 + tray_n * o->tray_slot) {
 			int b = button == BTN_LEFT ? 1 : button == BTN_MIDDLE ? 2 : button == BTN_RIGHT ? 3 : 0;
-			if (b == 3)
-				expect_popup(o->bar.x + ptr_x, o->bar.y + o->bar.h);   /* menu pod paskiem */
-			if (b)
-				tray_click((bx - o->tray_x0) / o->tray_slot, b, o->bar.x + ptr_x, o->bar.y + ptr_y);
+			if (b)                                            /* menu pod paskiem, od kursora */
+				tray_click((bx - o->tray_x0) / o->tray_slot, b, o->bar.x + ptr_x, o->bar.y + o->bar.h, o);
 			return;
 		}
 		if (button != BTN_LEFT)

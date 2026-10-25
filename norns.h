@@ -93,6 +93,9 @@ struct output {
 	struct fx *fx;                  /* warstwa efektów trybu Nostromo (nostromo.c) */
 	struct fx *crt;                 /* stałe linie kineskopu w trybie Nostromo */
 	struct surf note;               /* powiadomienia (urd.c rysuje, notify.c trzyma treść) */
+	struct surf menu;               /* menu aplikacji z zasobnika */
+	bool menu_shown;
+	int menu_rowh, menu_pad;        /* wysokość wiersza i margines (piksele bufora) */
 	bool note_shown;
 	int note_y[8];                  /* granice powiadomień w pikselach bufora (do klików) */
 };
@@ -222,6 +225,8 @@ struct tray_item {
 	char *id, *title;
 	pixman_image_t *icon;           /* premultiplied ARGB, rozmiar oryginalny */
 	bool attention;                 /* Status = NeedsAttention */
+	char *menu;                     /* ścieżka com.canonical.dbusmenu albo NULL */
+	bool item_is_menu;              /* lewy klik też otwiera menu */
 	struct sd_bus_slot *sig_slot, *get_slot;
 };
 
@@ -229,7 +234,32 @@ extern struct tray_item *tray_items[TRAY_MAX];
 extern int tray_n;
 int tray_init(void);                 /* zwraca fd magistrali albo -1 */
 void tray_dispatch(void);
-void tray_click(int i, int button, int x, int y);   /* 1 lewy, 2 środkowy, 3 prawy */
+void tray_click(int i, int button, int x, int y, struct output *o);   /* 1 lewy, 2 środkowy, 3 prawy */
+
+/* menu aplikacji z zasobnika (dbusmenu), rysowane przez urd pod paskiem */
+#define TMENU_MAX 128
+struct tmenu_entry {
+	int32_t id, parent;
+	char label[128];
+	bool enabled, visible, separator, submenu;
+	int toggle;                     /* 0 brak, 1 checkbox, 2 radio */
+	bool checked;
+};
+struct tmenu {
+	bool open;
+	struct output *out;
+	int x;                          /* lewa krawędź (globalne logiczne px) */
+	int parent;                     /* pokazywany poziom: 0 = główny */
+	int hover;                      /* wiersz pod kursorem, -1 = żaden */
+	int n;
+	struct tmenu_entry e[TMENU_MAX];
+	int rows[TMENU_MAX + 1];        /* widoczne wiersze: indeks w e[], -1 = „wstecz” */
+	int nrows;
+};
+extern struct tmenu tmenu;
+void tmenu_rows(void);               /* przelicz widoczne wiersze */
+void tmenu_activate(int row);        /* klik w wiersz */
+void tmenu_close(void);
 
 /* ---------- powiadomienia (notify.c) ---------- */
 

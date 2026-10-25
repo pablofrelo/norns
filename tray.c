@@ -18,6 +18,7 @@
 #define WATCHER_NAME  "org.kde.StatusNotifierWatcher"
 #define WATCHER_PATH  "/StatusNotifierWatcher"
 #define ITEM_IFACE    "org.kde.StatusNotifierItem"
+#define MENU_IFACE    "com.canonical.dbusmenu"
 
 struct tray_item *tray_items[TRAY_MAX];
 int tray_n;
@@ -125,6 +126,7 @@ static void item_clear(struct tray_item *it)
 	free(it->path);
 	free(it->id);
 	free(it->title);
+	free(it->menu);
 	free(it);
 }
 
@@ -165,6 +167,17 @@ static int on_props(sd_bus_message *m, void *userdata, sd_bus_error *err)
 			}
 			sd_bus_message_exit_container(m);
 			sd_bus_message_exit_container(m);
+		} else if (!strcmp(key, "Menu")) {
+			const char *v = NULL;
+			if (sd_bus_message_read(m, "v", "o", &v) < 0)
+				sd_bus_message_skip(m, "v");
+			free(it->menu);
+			it->menu = v && *v && strcmp(v, "/") ? strdup(v) : NULL;
+		} else if (!strcmp(key, "ItemIsMenu")) {
+			int b = 0;
+			if (sd_bus_message_read(m, "v", "b", &b) < 0)
+				sd_bus_message_skip(m, "v");
+			it->item_is_menu = b;
 		} else if (!strcmp(key, "IconName") || !strcmp(key, "IconThemePath") ||
 		           !strcmp(key, "Status") || !strcmp(key, "Id") || !strcmp(key, "Title")) {
 			const char *v = NULL;
@@ -423,13 +436,204 @@ void tray_dispatch(void)
 	sd_bus_flush(bus);
 }
 
-/* Kliknięcie w ikonkę: lewy — Activate, środkowy — SecondaryActivate, prawy — ContextMenu. */
-void tray_click(int i, int button, int x, int y)
+/* ---------- menu aplikacji (com.canonical.dbusmenu) ---------- */
+
+struct tmenu tmenu = { .hover = -1 };
+static char menu_service[256], menu_path[256];
+static sd_bus_slot *menu_slot;
+static struct { int i, x, y; } menu_fallback;   /* gdy menu się nie uda: ContextMenu */
+
+/* Jeden węzeł układu (ia{sv}av) i rekurencyjnie jego dzieci. */
+static void parse_node(sd_bus_message *m, int32_t parent, int depth)
+{
+	int32_t id;
+	if (sd_bus_message_read(m, "i", &id) < 0)
+		return;
+	struct tmenu_entry e = { .id = id, .parent = parent, .enabled = true, .visible = true };
+	if (sd_bus_message_enter_container(m, 'a', "{sv}") >= 0) {
+		while (sd_bus_message_enter_container(m, 'e', "sv") > 0) {
+			const char *key, *str;
+			int32_t iv;
+			int bv;
+			sd_bus_message_read(m, "s", &key);
+			if (!strcmp(key, "label") && sd_bus_message_read(m, "v", "s", &str) >= 0) {
+				char *w = e.label;                          /* bez podkreśleń mnemonik */
+				for (const char *r = str; *r && w < e.label + sizeof e.label - 1; r++) {
+					if (*r == '_' && r[1] == '_')
+						*w++ = *r++;
+					else if (*r != '_')
+						*w++ = *r;
+				}
+				*w = 0;
+			} else if (!strcmp(key, "enabled") && sd_bus_message_read(m, "v", "b", &bv) >= 0) {
+				e.enabled = bv;
+			} else if (!strcmp(key, "visible") && sd_bus_message_read(m, "v", "b", &bv) >= 0) {
+				e.visible = bv;
+			} else if (!strcmp(key, "type") && sd_bus_message_read(m, "v", "s", &str) >= 0) {
+				e.separator = !strcmp(str, "separator");
+			} else if (!strcmp(key, "toggle-type") && sd_bus_message_read(m, "v", "s", &str) >= 0) {
+				e.toggle = !strcmp(str, "checkmark") ? 1 : !strcmp(str, "radio") ? 2 : 0;
+			} else if (!strcmp(key, "toggle-state") && sd_bus_message_read(m, "v", "i", &iv) >= 0) {
+				e.checked = iv == 1;
+			} else if (!strcmp(key, "children-display") && sd_bus_message_read(m, "v", "s", &str) >= 0) {
+				e.submenu = !strcmp(str, "submenu");
+			} else {
+				sd_bus_message_skip(m, "v");
+			}
+			sd_bus_message_exit_container(m);
+		}
+		sd_bus_message_exit_container(m);
+	}
+	if (depth > 0 && tmenu.n < TMENU_MAX)              /* korzeń (id 0) nie jest wierszem */
+		tmenu.e[tmenu.n++] = e;
+	if (sd_bus_message_enter_container(m, 'a', "v") >= 0) {
+		bool any = false;
+		while (sd_bus_message_enter_container(m, 'v', "(ia{sv}av)") > 0) {
+			if (sd_bus_message_enter_container(m, 'r', "ia{sv}av") > 0) {
+				parse_node(m, id, depth + 1);
+				sd_bus_message_exit_container(m);
+				any = true;
+			}
+			sd_bus_message_exit_container(m);
+		}
+		sd_bus_message_exit_container(m);
+		if (any && depth > 0)                          /* ma dzieci = podmenu, nawet bez podpowiedzi */
+			for (int i = 0; i < tmenu.n; i++)
+				if (tmenu.e[i].id == id)
+					tmenu.e[i].submenu = true;
+	}
+}
+
+void tmenu_rows(void)
+{
+	tmenu.nrows = 0;
+	if (tmenu.parent != 0)
+		tmenu.rows[tmenu.nrows++] = -1;                    /* „‹ wstecz” */
+	for (int i = 0; i < tmenu.n && tmenu.nrows < TMENU_MAX; i++)
+		if (tmenu.e[i].parent == tmenu.parent && tmenu.e[i].visible)
+			tmenu.rows[tmenu.nrows++] = i;
+}
+
+static void context_menu_fallback(void)
+{
+	int i = menu_fallback.i;
+	if (i < 0 || i >= tray_n)
+		return;
+	expect_popup(menu_fallback.x, menu_fallback.y);
+	sd_bus_call_method_async(bus, NULL, tray_items[i]->service, tray_items[i]->path, ITEM_IFACE,
+	                         "ContextMenu", NULL, NULL, "ii", menu_fallback.x, menu_fallback.y);
+}
+
+static int on_layout(sd_bus_message *m, void *userdata, sd_bus_error *err)
+{
+	sd_bus_slot_unref(menu_slot);
+	menu_slot = NULL;
+	uint32_t rev;
+	tmenu.n = 0;
+	if (!sd_bus_message_is_method_error(m, NULL) && sd_bus_message_read(m, "u", &rev) >= 0 &&
+	    sd_bus_message_enter_container(m, 'r', "ia{sv}av") > 0) {
+		parse_node(m, 0, 0);
+		sd_bus_message_exit_container(m);
+	}
+	if (tmenu.n == 0) {                                    /* nic nie przyszło — stara droga */
+		fprintf(stderr, "norns: menu z zasobnika puste, próbuję ContextMenu\n");
+		context_menu_fallback();
+		sd_bus_flush(bus);
+		return 0;
+	}
+	tmenu.parent = 0;
+	tmenu.hover = -1;
+	tmenu_rows();
+	tmenu.open = true;
+	struct output *o;
+	wl_list_for_each(o, &outputs, link)
+		o->menu.dirty = true;
+	river_window_manager_v1_manage_dirty(wm);
+	return 0;
+}
+
+static void menu_open(struct tray_item *it, int x, struct output *o)
+{
+	snprintf(menu_service, sizeof menu_service, "%s", it->service);
+	snprintf(menu_path, sizeof menu_path, "%s", it->menu);
+	tmenu.out = o;
+	tmenu.x = x;
+	/* AboutToShow daje aplikacji szansę odświeżyć menu (nm-applet: lista sieci) */
+	sd_bus_call_method_async(bus, NULL, menu_service, menu_path, MENU_IFACE, "AboutToShow", NULL, NULL, "i", 0);
+	sd_bus_slot_unref(menu_slot);
+	menu_slot = NULL;
+	sd_bus_call_method_async(bus, &menu_slot, menu_service, menu_path, MENU_IFACE, "GetLayout",
+	                         on_layout, NULL, "iias", 0, -1, 0);
+}
+
+void tmenu_close(void)
+{
+	if (!tmenu.open)
+		return;
+	tmenu.open = false;
+	river_window_manager_v1_manage_dirty(wm);
+}
+
+void tmenu_activate(int row)
+{
+	if (!tmenu.open || row < 0 || row >= tmenu.nrows)
+		return;
+	int i = tmenu.rows[row];
+	struct output *o;
+	wl_list_for_each(o, &outputs, link)
+		o->menu.dirty = true;
+	if (i < 0) {                                           /* wstecz: poziom wyżej */
+		int32_t up = 0;
+		for (int k = 0; k < tmenu.n; k++)
+			if (tmenu.e[k].id == tmenu.parent)
+				up = tmenu.e[k].parent;
+		tmenu.parent = up;
+		tmenu.hover = -1;
+		tmenu_rows();
+		river_window_manager_v1_manage_dirty(wm);
+		return;
+	}
+	struct tmenu_entry *e = &tmenu.e[i];
+	if (e->separator || !e->enabled)
+		return;
+	if (e->submenu) {                                      /* wejdź poziom niżej */
+		sd_bus_call_method_async(bus, NULL, menu_service, menu_path, MENU_IFACE, "AboutToShow",
+		                         NULL, NULL, "i", e->id);
+		tmenu.parent = e->id;
+		tmenu.hover = -1;
+		tmenu_rows();
+		river_window_manager_v1_manage_dirty(wm);
+		return;
+	}
+	sd_bus_call_method_async(bus, NULL, menu_service, menu_path, MENU_IFACE, "Event", NULL, NULL,
+	                         "isvu", e->id, "clicked", "i", 0, 0);
+	sd_bus_flush(bus);
+	tmenu_close();
+}
+
+/* Kliknięcie w ikonkę: lewy — Activate (albo menu, gdy ikona jest samym menu),
+ * środkowy — SecondaryActivate, prawy — menu aplikacji (dbusmenu), a gdy go nie
+ * ma — ContextMenu, czyli aplikacja otwiera własne okienko. */
+void tray_click(int i, int button, int x, int y, struct output *o)
 {
 	if (!bus || i < 0 || i >= tray_n)
 		return;
-	const char *method = button == 1 ? "Activate" : button == 2 ? "SecondaryActivate" : "ContextMenu";
-	sd_bus_call_method_async(bus, NULL, tray_items[i]->service, tray_items[i]->path, ITEM_IFACE,
-	                         method, NULL, NULL, "ii", x, y);
+	struct tray_item *it = tray_items[i];
+	bool want_menu = button == 3 || (button == 1 && it->item_is_menu);
+	if (want_menu && tmenu.open && !strcmp(menu_service, it->service)) {
+		tmenu_close();                                     /* drugi klik w tę samą ikonkę zamyka */
+		return;
+	}
+	tmenu_close();
+	menu_fallback.i = i;
+	menu_fallback.x = x;
+	menu_fallback.y = y;
+	if (want_menu && it->menu)
+		menu_open(it, x, o);
+	else if (button == 3)
+		context_menu_fallback();
+	else
+		sd_bus_call_method_async(bus, NULL, it->service, it->path, ITEM_IFACE,
+		                         button == 1 ? "Activate" : "SecondaryActivate", NULL, NULL, "ii", x, y);
 	sd_bus_flush(bus);
 }
