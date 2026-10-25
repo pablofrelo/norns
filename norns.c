@@ -545,7 +545,7 @@ static void spawn(const char *const *cmd)
 	}
 }
 
-/* Fuzzel motywu na monitorze z fokusem (bez --output wybiera sam);
+/* Fuzzel motywu na monitorze pod kursorem (bez --output wybiera sam);
  * help = ściąga ze skrótami w trybie --dmenu, czytana ze stdin. */
 static void spawn_run(bool help)
 {
@@ -554,7 +554,7 @@ static void spawn_run(bool help)
 	for (const char *const *a = THEME->run; *a && n < 30; a++)
 		argv[n++] = *a;
 	char opt[80], lines[32];
-	struct output *o = focused && focused->out ? focused->out : active_output();
+	struct output *o = active_output();   /* monitor pod kursorem — także pusty */
 	struct wlout *wo;
 	if (o)
 		wl_list_for_each(wo, &wlouts, link)
