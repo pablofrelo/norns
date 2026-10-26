@@ -708,6 +708,12 @@ void toggle_theme(void)
 static struct win *drop_win;
 static bool drop_spawning;
 
+/* Terminal wysuwany — także zanim norns go oznaczy (po restarcie znamy tylko app_id). */
+static bool is_drop(const struct win *w)
+{
+	return w->drop || (w->app_id && !strcmp(w->app_id, DROP_APP_ID));
+}
+
 /* Cel na monitorze: wyśrodkowany, nad dolną krawędzią. */
 static void drop_place(struct win *w)
 {
@@ -896,7 +902,7 @@ static void run(const struct key *k)
 		toggle_theme();
 		break;
 	case FLOAT_TOGGLE:
-		if (focused && focused->out) {
+		if (focused && focused->out && !focused->drop) {        /* terminal wysuwany zawsze pływa */
 			struct output *fo = focused->out;
 			int tag = focused->tag;
 			detach(focused);
@@ -940,7 +946,7 @@ static void run(const struct key *k)
 		urd_redraw_bars();
 		break;
 	case FULLSCREEN_TOGGLE:
-		if (focused)
+		if (focused && !focused->drop)
 			focused->fs_want = focused->fullscreen ? 2 : 1;
 		break;
 	case HELP:
@@ -1496,7 +1502,7 @@ static void tree_write(struct node *n, char **p, char *end)
 	if (*p >= end - 64)
 		return;
 	if (n->win)
-		*p += snprintf(*p, end - *p, "\tL\t%s", *n->win->ident ? n->win->ident : "-");
+		*p += snprintf(*p, end - *p, "\tL\t%s", *n->win->ident && !is_drop(n->win) ? n->win->ident : "-");
 	else {
 		*p += snprintf(*p, end - *p, "\tN\t%d\t%.3f", n->side_by_side, n->ratio);
 		tree_write(n->a, p, end);
@@ -1513,8 +1519,8 @@ static struct node *tree_read(char **tok, struct output *o, int tag)
 	if (!strcmp(t, "L")) {
 		char *id = strsep(tok, "\t");
 		struct win *w = id ? unplaced_by_ident(id) : NULL;
-		if (!w || w->drop)
-			return NULL;
+		if (!w || is_drop(w))
+			return NULL;                            /* terminal wysuwany nigdy nie jest kaflem */
 		struct node *leaf = calloc(1, sizeof *leaf);
 		leaf->win = w;
 		w->leaf = leaf;
@@ -1586,7 +1592,7 @@ static void layout_restore(void)
 			char *x = strsep(&tok, "\t"), *y = strsep(&tok, "\t");
 			struct win *w = id ? unplaced_by_ident(id) : NULL;
 			struct output *o = desc ? output_by_desc(desc) : NULL;
-			if (!w || !o || !tag || !x || !y || w->drop)
+			if (!w || !o || !tag || !x || !y || is_drop(w))
 				continue;
 			w->floating = w->placed = true;
 			attach(w, o, atoi(tag) >= 0 && atoi(tag) < NTAGS ? atoi(tag) : o->tag);
