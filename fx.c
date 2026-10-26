@@ -11,7 +11,8 @@
 #include "norns.h"
 
 #define CRT_LINE     0.16f          /* przyciemnienie linii skanowania (0–1) */
-#define CRT_VIGNETTE 0.35f          /* przyciemnienie rogów (0–1) */
+#define CRT_VIGNETTE 0.35f          /* ściemnienie w samym rogu (0–1) */
+#define CRT_CORNER   1.1f           /* od tej odległości (0 środek, 2 róg) zaczyna się ściemnianie */
 
 bool crt_on;
 
@@ -57,18 +58,28 @@ static struct fx *fx_new(int bw, int bh)
 	return f;
 }
 
-/* Kineskop na stałe: co trzecia linia fizycznych pikseli przyciemniona, ciemniejsze rogi. */
+/* Kineskop: co trzecia linia fizycznych pikseli przyciemniona, a w samych rogach
+ * łagodne ściemnienie. Gradient rogu jest ditherowany (macierz Bayera 4×4), bo
+ * 8-bitowa alfa bez tego układa się w widoczne pierścienie. */
 static void draw_crt(struct buf *b)
 {
+	static const uint8_t bayer[4][4] = {
+		{ 0, 8, 2, 10 }, { 12, 4, 14, 6 }, { 3, 11, 1, 9 }, { 15, 7, 13, 5 },
+	};
 	uint32_t *px = b->data;
 	float cx = b->w / 2.0f, cy = b->h / 2.0f;
 	for (int y = 0; y < b->h; y++) {
 		float dy = (y - cy) / cy, line = y % 3 == 2 ? CRT_LINE : 0;
 		for (int x = 0; x < b->w; x++) {
 			float dx = (x - cx) / cx, r = dx * dx + dy * dy;      /* 0 środek, 2 róg */
-			float vig = r > 0.6f ? (r - 0.6f) / 1.4f * CRT_VIGNETTE : 0;
+			float vig = 0;
+			if (r > CRT_CORNER) {                                 /* tylko rogi */
+				float t = (r - CRT_CORNER) / (2 - CRT_CORNER);
+				vig = t * t * CRT_VIGNETTE;
+			}
 			float a = 1 - (1 - line) * (1 - vig);
-			px[y * b->w + x] = (uint32_t)(a * 255) << 24;        /* czarny, premultiplied */
+			int a8 = (int)(a * 255 + bayer[y & 3][x & 3] / 16.0f);
+			px[y * b->w + x] = (uint32_t)(a8 > 255 ? 255 : a8) << 24;   /* czarny, premultiplied */
 		}
 	}
 }
