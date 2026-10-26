@@ -844,14 +844,14 @@ static void screenshot(int kind)
 static void power_menu(void)
 {
 	char script[2048], *p = script, *end = script + sizeof script;
-	p += snprintf(p, end - p, "c=$(printf 'WYLOGUJ\\nRESTART\\nWYŁĄCZ\\n' |");
+	p += snprintf(p, end - p, "c=$(printf 'ZABLOKUJ\\nWYLOGUJ\\nRESTART\\nWYŁĄCZ\\n' |");
 	for (const char *const *a = THEME->run; *a && p < end - 64; a++)
 		p += snprintf(p, end - p, " '%s'", *a);       /* argumenty fuzzela bez apostrofów */
 	struct output *o = active_output();
 	if (o && p < end - 64)
 		p += snprintf(p, end - p, " '--output=%s'", conn_of(o));
-	snprintf(p, end - p, " --dmenu '--prompt=OFF  ' --lines=3 --width=24) || exit 0; "
-	         "case \"$c\" in WYLOGUJ) a=logout;; RESTART) a=reboot;; WYŁĄCZ) a=poweroff;; *) exit 0;; esac; "
+	snprintf(p, end - p, " --dmenu '--prompt=OFF  ' --lines=4 --width=24) || exit 0; "
+	         "case \"$c\" in ZABLOKUJ) exec \"$HOME/.local/bin/norns-ctl\" lock;; WYLOGUJ) a=logout;; RESTART) a=reboot;; WYŁĄCZ) a=poweroff;; *) exit 0;; esac; "
 	         "exec \"$HOME/.local/bin/norns-ctl\" power $a");
 	spawn((const char *const[]){ "/bin/sh", "-c", script, NULL });
 }
@@ -965,6 +965,9 @@ static void run(const struct key *k)
 		break;
 	case POWER_MENU:
 		power_menu();
+		break;
+	case LOCK:
+		spawn(THEME->lock);         /* locker z config.h; river sam pilnuje ext-session-lock */
 		break;
 	case DROP_TOGGLE:
 		drop_toggle(active_output());       /* monitor pod kursorem — też pusty */
@@ -1257,6 +1260,8 @@ static const char *ctl_run(const char *cmd, char *out, size_t n)
 			return "błąd: logout, reboot albo poweroff";
 		power_action(i);
 		return "ok";
+	} else if (!strcmp(verb, "lock")) {
+		k.act = LOCK;
 	} else if (!strcmp(verb, "drop")) {
 		k.act = DROP_TOGGLE;
 	} else if (!strcmp(verb, "float")) {
@@ -1273,7 +1278,7 @@ static const char *ctl_run(const char *cmd, char *out, size_t n)
 	} else {
 		return "polecenia: status | view N | send N | output next|prev | send-output next|prev | "
 		       "theme [toggle|gruvbox|muthur] | anim [on|off] | crt [on|off] | drop | float | "
-		       "power logout|reboot|poweroff | "
+		       "lock | power logout|reboot|poweroff | "
 		       "fullscreen | close | launcher | help";
 	}
 	run(&k);

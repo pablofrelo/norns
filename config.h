@@ -50,11 +50,31 @@ static const char *const run_muthur[] = {
 	"--selection-color=163d22ff", "--selection-text-color=d4ffe0ff", "--border-color=8cffb0ff", NULL
 };
 
+/* Blokada ekranu (Super+Shift+L, wyłącznik, norns-ctl lock). Domyślnie swaylock
+ * w kolorach motywu; inny locker (hyprlock, gtklock…) — wpisz tu jego polecenie.
+ * Locker musi znać ext-session-lock-v1. -f: swaylock odłącza się po zablokowaniu. */
+static const char *const lock_gruvbox[] = {
+	"swaylock", "-f", "-c", "282828", "--font", "JetBrainsMono Nerd Font",
+	"--inside-color", "282828", "--ring-color", "504945", "--line-color", "00000000",
+	"--separator-color", "00000000", "--key-hl-color", "8ec07c", "--bs-hl-color", "fabd2f",
+	"--text-color", "ebdbb2", "--inside-ver-color", "282828", "--ring-ver-color", "8ec07c",
+	"--text-ver-color", "8ec07c", "--inside-wrong-color", "282828", "--ring-wrong-color", "fb4934",
+	"--text-wrong-color", "fb4934", NULL
+};
+static const char *const lock_muthur[] = {
+	"swaylock", "-f", "-c", "050806", "--font", "Spleen",
+	"--inside-color", "050806", "--ring-color", "163d22", "--line-color", "00000000",
+	"--separator-color", "00000000", "--key-hl-color", "8cffb0", "--bs-hl-color", "ffb000",
+	"--text-color", "8cffb0", "--inside-ver-color", "050806", "--ring-ver-color", "d4ffe0",
+	"--text-ver-color", "d4ffe0", "--inside-wrong-color", "050806", "--ring-wrong-color", "ff5a4a",
+	"--text-wrong-color", "ff5a4a", NULL
+};
+
 const struct theme themes[] = {
 	{
 		.name = "gruvbox", .label = "GRUVBOX",
 		.font = "JetBrainsMono Nerd Font:pixelsize=14",
-		.term = term_gruvbox, .run = run_gruvbox,
+		.term = term_gruvbox, .run = run_gruvbox, .lock = lock_gruvbox,
 		.bg = 0x282828, .line = 0x504945, .dim = 0x928374, .fg = 0xebdbb2,
 		.accent = 0x8ec07c, .warn = 0xfabd2f, .alarm = 0xfb4934,
 		.focus = 0x8ec07c, .unfocus = 0x3c3836,
@@ -63,7 +83,7 @@ const struct theme themes[] = {
 	{
 		.name = "muthur", .label = "MU/TH/UR",
 		.font = "Spleen:pixelsize=16",  /* bitmapowe .otb, 8x16 */
-		.term = term_muthur, .run = run_muthur,
+		.term = term_muthur, .run = run_muthur, .lock = lock_muthur,
 		.bg = 0x050806, .line = 0x163d22, .dim = 0x4f9a68, .fg = 0x8cffb0,
 		.accent = 0xd4ffe0, .warn = 0xffb000, .alarm = 0xff5a4a,
 		.focus = 0x8cffb0, .unfocus = 0x163d22,
@@ -108,7 +128,9 @@ static const struct key keys[] = {
 	{ SUPER | SHIFT, XKB_KEY_H,     SPAWN,     0, hadley },  /* jak river poda Shift */
 	{ SUPER,        XKB_KEY_q,      CLOSE,     0, NULL },
 	{ SUPER,        XKB_KEY_Escape, QUIT,      0, NULL },  /* wyjście z norns, nie z rivera */
-	{ SUPER | SHIFT, XKB_KEY_Escape, POWER_MENU, 0, NULL }, /* wyloguj / restart / wyłącz */
+	{ SUPER | SHIFT, XKB_KEY_Escape, POWER_MENU, 0, NULL }, /* zablokuj / wyloguj / restart / wyłącz */
+	{ SUPER | SHIFT, XKB_KEY_l,     LOCK,      0, NULL },  /* blokada ekranu; l i L jak przy H */
+	{ SUPER | SHIFT, XKB_KEY_L,     LOCK,      0, NULL },
 	{ SUPER,        XKB_KEY_t,      THEME_TOGGLE, 0, NULL },
 	{ SUPER,        XKB_KEY_f,      FLOAT_TOGGLE, 0, NULL },
 	{ SUPER,        XKB_KEY_a,      ANIM_TOGGLE,  0, NULL },  /* efekty wł./wył. */
@@ -156,7 +178,8 @@ static const char *const help_lines[] = {
 	"Super+lewy przycisk   przesuń / zamień kafle",
 	"Super+prawy przycisk  rozmiar / proporcje podziału",
 	"Super+Escape          wyjdź z norns",
-	"Super+Shift+Escape    wyłącznik: wyloguj / restart / wyłącz",
+	"Super+Shift+L         zablokuj ekran",
+	"Super+Shift+Escape    wyłącznik: zablokuj / wyloguj / restart / wyłącz",
 	"Print                 zrzut monitora (plik + schowek)",
 	"Shift+Print           zrzut zaznaczonego obszaru",
 	"Super+Print           zrzut okna z fokusem",

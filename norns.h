@@ -37,6 +37,7 @@ struct theme {
 	const char *font;               /* wzorzec fontconfig */
 	const char *const *term;        /* terminal odpalany w tym motywie */
 	const char *const *run;         /* uruchamianie programów (Super+D) */
+	const char *const *lock;        /* blokada ekranu (Super+Shift+L) */
 	uint32_t bg, line, dim, fg, accent, warn, alarm;   /* 0xRRGGBB */
 	uint32_t focus, unfocus;        /* ramki okien */
 	uint32_t wall, dot;             /* tapeta */
@@ -289,7 +290,7 @@ void ctl_init(struct sd_bus *bus);     /* norns.c: polecenia z norns-ctl */   /*
 
 enum action { SPAWN, CLOSE, QUIT, VIEW, SEND_TAG, FOCUS_OUT, SEND_OUT, THEME_TOGGLE, FLOAT_TOGGLE,
               ANIM_TOGGLE, FULLSCREEN_TOGGLE, VOLUME, FOCUS_DIR, SWAP_DIR, CRT_TOGGLE,
-              HELP, DROP_TOGGLE, SHOT, POWER_MENU };
+              HELP, DROP_TOGGLE, SHOT, POWER_MENU, LOCK };
 enum { LEFT, DOWN, UP, RIGHT };
 
 struct key {

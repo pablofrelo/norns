@@ -29,6 +29,8 @@ and used daily on my own machine.
   battery, volume, system tray (StatusNotifierItem: left click activates, middle
   is the secondary action, right click opens the application's menu — drawn by
   urd from com.canonical.dbusmenu, e.g. nm-applet's network list), clock, theme switch (the power menu is on Super+Shift+Escape)
+- screen lock: swaylock in the colours of the current theme by default, any
+  ext-session-lock-v1 locker can be set in `config.h`
 - verdandi, the built-in notification daemon (org.freedesktop.Notifications): notifications
   type themselves out at the top centre of every monitor; critical
   ones stay until clicked, a click runs the default action (if another daemon
@@ -41,7 +43,7 @@ and used daily on my own machine.
 river 0.4 or newer (river-protocols), wayland, wayland-protocols,
 wayland-cursor, xkbcommon, fcft, pixman, libsystemd (sd-bus, for the tray),
 libpng, a C11 compiler, make. Optional: `wpctl` (PipeWire) for volume,
-`systemctl` for the power menu, foot as the terminal.
+`systemctl` for the power menu, `swaylock` for the screen lock, foot as the terminal.
 
 On Arch: `pacman -S river wayland wayland-protocols libxkbcommon fcft pixman tllist`
 
@@ -76,7 +78,8 @@ survives a crash:
 | Print / Shift+Print / Super+Print | screenshot of the monitor / a region / the focused window (grim, slurp; saved to ~/Pictures/Screenshots and copied) |
 | Super+B / Super+E | browser / file manager |
 | Super+Q | close window |
-| Super+Shift+Escape | power menu: log out / reboot / power off (fuzzel) |
+| Super+Shift+L | lock the screen (swaylock by default, see `config.h`) |
+| Super+Shift+Escape | power menu: lock / log out / reboot / power off (fuzzel) |
 | Super+H/J/K/L | focus left/down/up/right (across monitors) |
 | Super+Ctrl+H/J/K/L | swap with the neighbour in that direction |
 | Super+1…9 | show tag |
@@ -106,6 +109,7 @@ Scripts and other programs can drive norns over D-Bus (installed with
     norns-ctl anim off          # on, off, or toggle when omitted
     norns-ctl crt on            # CRT scanlines
     norns-ctl drop              # slide-up terminal
+    norns-ctl lock              # lock the screen
     norns-ctl power poweroff    # or logout, reboot
 
 `norns-ctl` with no arguments lists every command.
@@ -122,6 +126,12 @@ rules match on.
 On theme change norns runs `~/.config/norns/theme <gruvbox|muthur>` if it is
 executable — see `theme.example` for switching foot's palette. The chosen theme
 is remembered in `~/.local/state/norns/theme`.
+
+The screen locker is set per theme in `config.h` (`lock_gruvbox`,
+`lock_muthur`); swaylock by default, any ext-session-lock-v1 locker works.
+norns does not lock on idle by itself — for that, add swayidle to river's init:
+
+    swayidle -w timeout 600 'norns-ctl lock' &
 
 ## License
 
