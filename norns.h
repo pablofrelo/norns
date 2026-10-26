@@ -88,8 +88,7 @@ struct output {
 	int tag_x[NTAGS + 1];           /* granice klikalnych tagów na pasku */
 	int theme_x;                    /* od tego x klik przełącza motyw */
 	int tray_x0, tray_slot;         /* zasobnik na pasku (piksele bufora) */
-	struct fx *fx;                  /* warstwa efektów trybu Nostromo (nostromo.c) */
-	struct fx *crt;                 /* stałe linie kineskopu w trybie Nostromo */
+	struct fx *crt;                 /* linie kineskopu (fx.c) */
 	struct surf note;               /* powiadomienia (urd.c rysuje, verdandi.c trzyma treść) */
 	struct surf menu;               /* menu aplikacji z zasobnika */
 	bool menu_shown;
@@ -178,15 +177,15 @@ void anim_tag_switch(struct output *o, int from, int to);
 void anim_render_window(struct win *w, uint64_t now);   /* tylko w sekwencji render */
 bool anim_busy(uint64_t now);
 
-/* nostromo.c — tryb Nostromo (Super+Ctrl+A) */
-extern bool nostromo_on;
-void nostromo_init(void);
-void nostromo_toggle(void);
-void nostromo_tick(bool fullscreen_visible);            /* co 2 s z pętli */
-void nostromo_render(uint64_t now);                     /* w sekwencji render, na końcu */
-bool nostromo_busy(uint64_t now);
-int nostromo_jitter(const struct win *w, uint64_t now);
-void nostromo_output_fini(struct output *o);
+/* sfx.c — dźwięki */
+void sfx_init(void);
+
+/* fx.c — warstwa efektów nad ekranem */
+extern bool crt_on;
+void fx_init(void);
+void fx_set_crt(bool on);
+void fx_render(void);                                   /* w sekwencji render, na końcu */
+void fx_output_fini(struct output *o);
 void sfx_typing(const char *text, int ms);              /* stukot klawiszy do powiadomienia */
 void sfx_drop(bool up);                                 /* serwo terminala wysuwanego */
 const char *sfx_path(const char *name);                 /* ścieżka wygenerowanego dźwięku */
@@ -288,7 +287,7 @@ void ctl_init(struct sd_bus *bus);     /* norns.c: polecenia z norns-ctl */   /*
 /* ---------- skróty i reguły (definicje w config.h) ---------- */
 
 enum action { SPAWN, CLOSE, QUIT, VIEW, SEND_TAG, FOCUS_OUT, SEND_OUT, THEME_TOGGLE, FLOAT_TOGGLE,
-              ANIM_TOGGLE, FULLSCREEN_TOGGLE, VOLUME, FOCUS_DIR, SWAP_DIR, NOSTROMO_TOGGLE,
+              ANIM_TOGGLE, FULLSCREEN_TOGGLE, VOLUME, FOCUS_DIR, SWAP_DIR, CRT_TOGGLE,
               HELP, DROP_TOGGLE, SHOT, POWER_MENU };
 enum { LEFT, DOWN, UP, RIGHT };
 

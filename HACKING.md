@@ -16,7 +16,8 @@ commitów są po polsku, README po angielsku.
 | `deco.c` | poświata / cień wokół okien (4 paski dekoracji) |
 | `tray.c` | zasobnik: StatusNotifierWatcher/Host po sd-bus, ikony (pixmapy, PNG), dbusmenu |
 | `verdandi.c` | demon powiadomień `org.freedesktop.Notifications` (treść; rysuje urd.c) |
-| `nostromo.c` | tryb Nostromo (glitch, radio, linie kineskopu) i wszystkie dźwięki generowane w C (bzyk, szum, radio z nagrań, serwo, migawka, stukot klawiszy) |
+| `fx.c` | warstwa efektów nad ekranem (na razie linie kineskopu) — miejsce na kolejne efekty |
+| `sfx.c` | dźwięki generowane w C (serwo terminala, migawka, stukot klawiszy), odtwarzane przez `pw-play` |
 | `sensors.c` | CPU, RAM, temperatura, bateria, sieć, głośność (co 2 s) |
 | `shm.c` | bufory `wl_shm` (`buf_new/attach/drop`, jednorazowe i wielokrotne) |
 | `norns-ctl` | skrypt: `busctl` → metoda `Run(s)` w norns |
@@ -34,7 +35,7 @@ commitów są po polsku, README po angielsku.
   `pw = ph = -1`.
 - Nasze powierzchnie (pasek, tapeta, powiadomienia, menu, efekty) to
   `river_shell_surface_v1`; commit w render z `sync_next_commit`.
-- Pętla `main()`: `poll` na Wayland, timer 2 s (sensory, Nostromo,
+- Pętla `main()`: `poll` na Wayland, timer 2 s (sensory,
   powiadomienia), timer animacji 16 ms, timer tapety, fd D-Bus.
 
 ## Rzeczy, o które łatwo się potknąć
@@ -65,8 +66,8 @@ commitów są po polsku, README po angielsku.
   `help_lines[]` i w tabeli Keys w README.
 - **Polecenie norns-ctl**: gałąź w `ctl_run()` (norns.c) + lista w
   komunikacie pomocy + przykład w README.
-- **Dźwięk**: generator w nostromo.c, plik w `$XDG_RUNTIME_DIR/norns/`
-  tworzony w `nostromo_init()`, odtwarzanie przez `pw-play`.
+- **Dźwięk**: generator w sfx.c, plik w `$XDG_RUNTIME_DIR/norns/`
+  tworzony w `sfx_init()`, odtwarzanie przez `pw-play`.
 - **Kolor/czcionka**: tylko przez motyw (`THEME->...`), nigdy na sztywno.
 
 ## Budowanie i testy

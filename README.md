@@ -87,7 +87,7 @@ survives a crash:
 | Super+Ctrl+F | toggle fullscreen |
 | Super+T | switch theme |
 | Super+A | animations on/off |
-| Super+Ctrl+A | Nostromo mode on/off (with a demo / a CRT switch-off) |
+| Super+Ctrl+A | CRT scanlines on/off |
 | Super+left drag | move (floating) / swap or insert (tiles) |
 | Super+right drag | resize (floating) / move split (tiles) |
 | volume keys | volume via wpctl |
@@ -98,26 +98,17 @@ survives a crash:
 Scripts and other programs can drive norns over D-Bus (installed with
 `make install`):
 
-    norns-ctl status            # theme=muthur nostromo=on ... DP-9:1:12---6---
+    norns-ctl status            # theme=muthur anim=on ... DP-9:1:12---6---
     norns-ctl view 3            # show tag 3 on the monitor under the pointer
     norns-ctl send 3            # send the focused window to tag 3
     norns-ctl output next       # focus the next monitor
     norns-ctl theme gruvbox     # or muthur, or toggle
-    norns-ctl nostromo off      # on, off, or toggle when omitted
+    norns-ctl anim off          # on, off, or toggle when omitted
+    norns-ctl crt on            # CRT scanlines
     norns-ctl drop              # slide-up terminal
     norns-ctl power poweroff    # or logout, reboot
 
 `norns-ctl` with no arguments lists every command.
-
-## Nostromo mode
-
-Super+Ctrl+A. Every half hour the screen glitches like an old CRT with a short
-buzz; on the hour it also plays radio static and a garbled transmission. Put
-your own recordings (WAV, 16-bit or float) in `~/.local/share/norns/radio/` —
-norns band-limits, overdrives and chops them into a radio voice itself and
-plays a random one through `pw-play`. Skipped while a window is fullscreen or
-when animations are off. Window contents are not cut into bands — a window
-manager cannot see their pixels — so windows jitter under an overlay instead.
 
 ## Configuration
 

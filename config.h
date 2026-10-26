@@ -112,8 +112,8 @@ static const struct key keys[] = {
 	{ SUPER,        XKB_KEY_t,      THEME_TOGGLE, 0, NULL },
 	{ SUPER,        XKB_KEY_f,      FLOAT_TOGGLE, 0, NULL },
 	{ SUPER,        XKB_KEY_a,      ANIM_TOGGLE,  0, NULL },  /* efekty wł./wył. */
-	{ SUPER | CTRL, XKB_KEY_a,      NOSTROMO_TOGGLE, 0, NULL },  /* tryb Nostromo */
 	{ SUPER | CTRL, XKB_KEY_f,      FULLSCREEN_TOGGLE, 0, NULL },
+	{ SUPER | CTRL, XKB_KEY_a,      CRT_TOGGLE, 0, NULL },  /* linie kineskopu (fx.c) */
 	{ SUPER,        XKB_KEY_h,      FOCUS_DIR, LEFT,  NULL },
 	{ SUPER,        XKB_KEY_j,      FOCUS_DIR, DOWN,  NULL },
 	{ SUPER,        XKB_KEY_k,      FOCUS_DIR, UP,    NULL },
@@ -152,7 +152,7 @@ static const char *const help_lines[] = {
 	"Super+Ctrl+F          pełny ekran",
 	"Super+T               zmień motyw",
 	"Super+A               animacje wł./wył.",
-	"Super+Ctrl+A          tryb Nostromo",
+	"Super+Ctrl+A          linie kineskopu wł./wył.",
 	"Super+lewy przycisk   przesuń / zamień kafle",
 	"Super+prawy przycisk  rozmiar / proporcje podziału",
 	"Super+Escape          wyjdź z norns",

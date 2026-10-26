@@ -58,7 +58,7 @@ bool anim_busy(uint64_t now)
 	wl_list_for_each(o, &outputs, link)
 		if (sliding(o, now))
 			return true;
-	if (nostromo_busy(now) || notify_busy(now))
+	if (notify_busy(now))
 		return true;
 	struct win *w;
 	wl_list_for_each(w, &windows, link)
@@ -149,7 +149,7 @@ void anim_render_window(struct win *w, uint64_t now)
 		int d = o->slide_dir * o->w;
 		off = vis ? (int)((1.0 - e) * d) : (int)(-e * d);
 	}
-	int px = w->bx + off + nostromo_jitter(w, now), py = w->by;
+	int px = w->bx + off, py = w->by;
 
 	/* przycięcie: okno z ramką i poświatą, w trakcie ślizgu do monitora,
 	 * przy otwieraniu rozwijane od środkowej linii jak włączany kineskop */

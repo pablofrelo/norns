@@ -945,8 +945,8 @@ static void run(const struct key *k)
 	case HELP:
 		spawn_run(true);
 		break;
-	case NOSTROMO_TOGGLE:
-		nostromo_toggle();
+	case CRT_TOGGLE:
+		fx_set_crt(!crt_on);
 		break;
 	case ANIM_TOGGLE:
 		anim_on = !anim_on;
@@ -1104,8 +1104,8 @@ static void out_removed(void *data, struct river_output_v1 *ro)
 	wl_list_for_each(w, &windows, link)
 		if (w->out == o)
 			detach(w);
-	nostromo_output_fini(o);
 	urd_output_fini(o);
+	fx_output_fini(o);
 	if (o->lo)
 		river_layer_shell_output_v1_destroy(o->lo);
 	river_output_v1_destroy(ro);
@@ -1186,8 +1186,8 @@ static const struct river_layer_shell_output_v1_listener lo_listener = {
 /* Stan dla skryptów: motyw, tryby, a dla każdego monitora widoczny tag i zajęte. */
 static void ctl_status(char *out, size_t n)
 {
-	int len = snprintf(out, n, "theme=%s nostromo=%s anim=%s focus=%s", THEME->name,
-	                   nostromo_on ? "on" : "off", anim_on ? "on" : "off",
+	int len = snprintf(out, n, "theme=%s anim=%s crt=%s focus=%s", THEME->name,
+	                   anim_on ? "on" : "off", crt_on ? "on" : "off",
 	                   focused && focused->app_id ? focused->app_id : "-");
 	struct output *o;
 	wl_list_for_each(o, &outputs, link) {
@@ -1233,15 +1233,12 @@ static const char *ctl_run(const char *cmd, char *out, size_t n)
 		if (!*arg || !strcmp(arg, "toggle") || strcmp(arg, THEME->name))
 			toggle_theme();
 		return "ok";
-	} else if (!strcmp(verb, "nostromo") || !strcmp(verb, "anim")) {
-		bool cur = verb[0] == 'n' ? nostromo_on : anim_on;
-		want = on ? true : off ? false : !cur;
-		if (want != cur) {
-			if (verb[0] == 'n')
-				nostromo_toggle();
-			else
-				anim_on = want;
-		}
+	} else if (!strcmp(verb, "crt")) {
+		fx_set_crt(on ? true : off ? false : !crt_on);
+		return "ok";
+	} else if (!strcmp(verb, "anim")) {
+		want = on ? true : off ? false : !anim_on;
+		anim_on = want;
 		river_window_manager_v1_manage_dirty(wm);
 		return "ok";
 	} else if (!strcmp(verb, "power")) {
@@ -1265,7 +1262,7 @@ static const char *ctl_run(const char *cmd, char *out, size_t n)
 		k.arg = 1;
 	} else {
 		return "polecenia: status | view N | send N | output next|prev | send-output next|prev | "
-		       "theme [toggle|gruvbox|muthur] | nostromo [on|off] | anim [on|off] | drop | float | "
+		       "theme [toggle|gruvbox|muthur] | anim [on|off] | crt [on|off] | drop | float | "
 		       "power logout|reboot|poweroff | "
 		       "fullscreen | close | launcher | help";
 	}
@@ -1937,7 +1934,8 @@ static void wm_render_start(void *d, struct river_window_manager_v1 *m)
 		if (w->floating && w->parent && w->parent->fullscreen && visible(w))
 			river_node_v1_place_top(w->rn);
 
-	nostromo_render(now);                   /* warstwa efektów na samej górze */
+
+	fx_render();                            /* warstwa efektów na samej górze */
 
 	anim_want = anim_busy(now);
 	river_window_manager_v1_render_finish(wm);
@@ -2121,7 +2119,8 @@ int main(void)
 	load_theme();
 	if (!urd_init())
 		return 1;
-	nostromo_init();
+	sfx_init();
+	fx_init();
 	layout_load();
 	run_theme_script();         /* otwarte foote dostają paletę zapamiętanego motywu */
 
@@ -2176,12 +2175,6 @@ int main(void)
 				continue;
 			sensors_update();
 			urd_redraw_bars();
-			bool fs = false;
-			struct win *fw;
-			wl_list_for_each(fw, &windows, link)
-				if (fw->fullscreen && visible(fw))
-					fs = true;
-			nostromo_tick(fs);
 			notify_tick();
 			if (restore_state == RESTORE_PENDING && now_ms() > restore_deadline)
 				river_window_manager_v1_manage_dirty(wm);   /* opisy monitorów nie przyszły */
