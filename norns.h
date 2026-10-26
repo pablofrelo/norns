@@ -279,6 +279,7 @@ void notify_init(struct sd_bus *bus);
 void notify_tick(void);
 bool notify_busy(uint64_t now);
 void notify_click(int i);
+void norns_notice(const char *summary, const char *body);   /* komunikat od norns */
 int note_type_ms(size_t chars);
 size_t note_chars(const struct note *n);   /* znaki (nie bajty) tytułu i treści */
 struct output *focus_output(void);

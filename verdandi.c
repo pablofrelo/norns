@@ -78,6 +78,52 @@ static void drop(int i, uint32_t reason)
 	changed();
 }
 
+/* Nowe albo podmienione powiadomienie (replaces = id do podmiany, 0 = nowe). */
+static uint32_t note_put(const char *app, uint32_t replaces, const char *summary, const char *body,
+                         uint8_t urgency, bool has_default, int32_t timeout)
+{
+	int i;
+	for (i = 0; i < notes_n; i++)
+		if (replaces && notes[i].id == replaces)
+			break;
+	if (i == notes_n) {                         /* nowe: na górę, najstarsze wypada */
+		if (notes_n == NOTE_MAX)
+			drop(NOTE_MAX - 1, 1);
+		memmove(&notes[1], &notes[0], notes_n * sizeof notes[0]);
+		notes_n++;
+		i = 0;
+		notes[0].id = replaces ? replaces : next_id++;
+	}
+	struct note *n = &notes[i];
+	copy(n->app, sizeof n->app, app);
+	copy(n->summary, sizeof n->summary, summary);
+	copy(n->body, sizeof n->body, body);
+	strip_markup(n->summary);
+	strip_markup(n->body);
+	n->urgency = urgency;
+	n->has_default = has_default;
+	n->t0 = now_ms();
+	n->expire = urgency == 2 || timeout == 0 ? 0 :             /* czas na czytanie liczy się po wypisaniu */
+	            n->t0 + note_type_ms(note_chars(n)) + (timeout > 0 ? timeout : NOTE_MS);
+	fprintf(stderr, "verdandi: powiadomienie %u od %s\n", n->id, n->app);
+	char all[sizeof n->summary + sizeof n->body];
+	snprintf(all, sizeof all, "%s%s", n->summary, n->body);    /* w tej kolejności się pisze */
+	sfx_typing(all, note_type_ms(note_chars(n)));
+	changed();
+	return n->id;
+}
+
+/* Komunikat od samego norns (motyw, animacje, efekty): kolejny podmienia
+ * poprzedni, więc szybkie przełączanie nie robi stosu powiadomień. */
+void norns_notice(const char *summary, const char *body)
+{
+	static uint32_t last;
+	bool alive = false;
+	for (int i = 0; i < notes_n; i++)
+		alive |= notes[i].id == last;
+	last = note_put("norns", alive ? last : 0, summary, body, 1, false, 2500);
+}
+
 static int m_notify(sd_bus_message *m, void *ud, sd_bus_error *err)
 {
 	const char *app, *icon, *summary, *body, *s;
@@ -113,35 +159,8 @@ static int m_notify(sd_bus_message *m, void *ud, sd_bus_error *err)
 	if (sd_bus_message_read(m, "i", &timeout) < 0)
 		timeout = -1;
 
-	int i;
-	for (i = 0; i < notes_n; i++)
-		if (replaces && notes[i].id == replaces)
-			break;
-	if (i == notes_n) {                         /* nowe: na górę, najstarsze wypada */
-		if (notes_n == NOTE_MAX)
-			drop(NOTE_MAX - 1, 1);
-		memmove(&notes[1], &notes[0], notes_n * sizeof notes[0]);
-		notes_n++;
-		i = 0;
-		notes[0].id = replaces ? replaces : next_id++;
-	}
-	struct note *n = &notes[i];
-	copy(n->app, sizeof n->app, app);
-	copy(n->summary, sizeof n->summary, summary);
-	copy(n->body, sizeof n->body, body);
-	strip_markup(n->summary);
-	strip_markup(n->body);
-	n->urgency = urgency;
-	n->has_default = has_default;
-	n->t0 = now_ms();
-	n->expire = urgency == 2 || timeout == 0 ? 0 :             /* czas na czytanie liczy się po wypisaniu */
-	            n->t0 + note_type_ms(note_chars(n)) + (timeout > 0 ? timeout : NOTE_MS);
-	fprintf(stderr, "verdandi: powiadomienie %u od %s\n", n->id, n->app);
-	char all[sizeof n->summary + sizeof n->body];
-	snprintf(all, sizeof all, "%s%s", n->summary, n->body);    /* w tej kolejności się pisze */
-	sfx_typing(all, note_type_ms(note_chars(n)));
-	changed();
-	return sd_bus_reply_method_return(m, "u", n->id);
+	uint32_t id = note_put(app, replaces, summary, body, urgency, has_default, timeout);
+	return sd_bus_reply_method_return(m, "u", id);
 }
 
 static int m_close(sd_bus_message *m, void *ud, sd_bus_error *err)

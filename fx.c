@@ -146,6 +146,8 @@ void fx_init(void)
 
 void fx_set_crt(bool on)
 {
+	if (on != crt_on)
+		norns_notice("Linie kineskopu", on ? "włączone" : "wyłączone");
 	crt_on = on;
 	char p[300];
 	state_path(p, sizeof p);

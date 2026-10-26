@@ -699,6 +699,7 @@ void toggle_theme(void)
 		o->wall.dirty = true;
 	save_theme();
 	run_theme_script();
+	norns_notice("Motyw", THEME->label);
 	river_window_manager_v1_manage_dirty(wm);
 }
 
@@ -950,6 +951,7 @@ static void run(const struct key *k)
 		break;
 	case ANIM_TOGGLE:
 		anim_on = !anim_on;
+		norns_notice("Animacje", anim_on ? "włączone" : "wyłączone");
 		river_window_manager_v1_manage_dirty(wm);
 		break;
 	case SHOT:
@@ -1238,6 +1240,8 @@ static const char *ctl_run(const char *cmd, char *out, size_t n)
 		return "ok";
 	} else if (!strcmp(verb, "anim")) {
 		want = on ? true : off ? false : !anim_on;
+		if (want != anim_on)
+			norns_notice("Animacje", want ? "włączone" : "wyłączone");
 		anim_on = want;
 		river_window_manager_v1_manage_dirty(wm);
 		return "ok";
