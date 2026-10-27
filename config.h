@@ -200,6 +200,7 @@ static const char *const help_lines[] = {
 static const struct rule rules[] = {
 	{ "firefox", "1O0R9HA001785", 0 },     /* lewy AOC */
 	{ "foot",    "1O0R9HA001780", 0 },     /* prawy AOC */
+	{ "Beeper",  "0x41A0", 0 },            /* laptop */
 };
 #define NRULES (sizeof rules / sizeof rules[0])
 

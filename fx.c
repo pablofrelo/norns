@@ -132,7 +132,7 @@ static void crt_render(void)
 
 /* Ekran to jeden kafel. Co SAVER_STEP_MS losowy kafel dzieli się na pół wzdłuż
  * dłuższego boku (jak nowe okno w norns) albo para sąsiednich liści zwija się
- * z powrotem w jeden. Kolory z motywu, najnowszy kafel ma ramkę fokusu.
+ * z powrotem w jeden. Kolory z motywu, najnowszy kafel z przygaszoną ramką (dim).
  * Włącza norns-ctl saver (np. ze swayidle); budzi ruch myszy, klik, skrót norns. */
 
 bool saver_on;
@@ -208,7 +208,7 @@ static bool sv_draw(struct saver *s, int i, pixman_image_t *img, int x, int y, i
 	n->h = h;
 	if (n->a < 0) {
 		if (w > 2 * (g + bd) && h > 2 * (g + bd)) {
-			box(img, x + g, y + g, w - 2 * g, h - 2 * g, i == s->newest ? THEME->focus : THEME->unfocus);
+			box(img, x + g, y + g, w - 2 * g, h - 2 * g, i == s->newest ? THEME->dim : THEME->unfocus);
 			box(img, x + g + bd, y + g + bd, w - 2 * (g + bd), h - 2 * (g + bd), THEME->bg);
 		}
 		return false;
