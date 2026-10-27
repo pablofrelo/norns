@@ -90,6 +90,7 @@ struct output {
 	int theme_x;                    /* od tego x klik przełącza motyw */
 	int tray_x0, tray_slot;         /* zasobnik na pasku (piksele bufora) */
 	struct fx *crt;                 /* linie kineskopu (fx.c) */
+	struct saver *saver;            /* wygaszacz (fx.c) */
 	struct surf note;               /* powiadomienia (urd.c rysuje, verdandi.c trzyma treść) */
 	struct surf menu;               /* menu aplikacji z zasobnika */
 	bool menu_shown;
@@ -185,6 +186,9 @@ void sfx_init(void);
 extern bool crt_on;
 void fx_init(void);
 void fx_set_crt(bool on);
+extern bool saver_on;
+void fx_set_saver(bool on);
+int fx_saver_frame(uint64_t now);                       /* klatka wygaszacza; za ile ms następna (0 = wył.) */
 void fx_render(void);                                   /* w sekwencji render, na końcu */
 void fx_output_fini(struct output *o);
 void sfx_typing(const char *text, int ms);              /* stukot klawiszy do powiadomienia */

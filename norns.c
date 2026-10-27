@@ -862,6 +862,10 @@ static void run(const struct key *k)
 	struct output *o = active_output(), *n;
 	struct win *n_w;
 
+	if (saver_on) {                         /* pierwszy skrót tylko budzi z wygaszacza */
+		fx_set_saver(false);
+		return;
+	}
 	switch (k->act) {
 	case SPAWN:
 		if (!k->cmd && k->arg)
@@ -1197,8 +1201,8 @@ static const struct river_layer_shell_output_v1_listener lo_listener = {
 /* Stan dla skryptów: motyw, tryby, a dla każdego monitora widoczny tag i zajęte. */
 static void ctl_status(char *out, size_t n)
 {
-	int len = snprintf(out, n, "theme=%s anim=%s crt=%s focus=%s", THEME->name,
-	                   anim_on ? "on" : "off", crt_on ? "on" : "off",
+	int len = snprintf(out, n, "theme=%s anim=%s crt=%s saver=%s focus=%s", THEME->name,
+	                   anim_on ? "on" : "off", crt_on ? "on" : "off", saver_on ? "on" : "off",
 	                   focused && focused->app_id ? focused->app_id : "-");
 	struct output *o;
 	wl_list_for_each(o, &outputs, link) {
@@ -1247,6 +1251,9 @@ static const char *ctl_run(const char *cmd, char *out, size_t n)
 	} else if (!strcmp(verb, "crt")) {
 		fx_set_crt(on ? true : off ? false : !crt_on);
 		return "ok";
+	} else if (!strcmp(verb, "saver")) {
+		fx_set_saver(on ? true : off ? false : !saver_on);
+		return "ok";
 	} else if (!strcmp(verb, "anim")) {
 		want = on ? true : off ? false : !anim_on;
 		if (want != anim_on)
@@ -1277,7 +1284,7 @@ static const char *ctl_run(const char *cmd, char *out, size_t n)
 		k.arg = 1;
 	} else {
 		return "polecenia: status | view N | send N | output next|prev | send-output next|prev | "
-		       "theme [toggle|gruvbox|muthur] | anim [on|off] | crt [on|off] | drop | float | "
+		       "theme [toggle|gruvbox|muthur] | anim [on|off] | crt [on|off] | saver [on|off] | drop | float | "
 		       "lock | power logout|reboot|poweroff | "
 		       "fullscreen | close | launcher | help";
 	}
@@ -1369,6 +1376,8 @@ static void seat_window_interaction(void *d, struct river_seat_v1 *rs, struct ri
 
 static void seat_pointer_position(void *d, struct river_seat_v1 *rs, int32_t x, int32_t y)
 {
+	if (saver_on && ptr_known && (x != ptr_x || y != ptr_y))
+		fx_set_saver(false);                    /* ruch myszy budzi z wygaszacza */
 	ptr_x = x;
 	ptr_y = y;
 	ptr_known = true;
@@ -1379,7 +1388,11 @@ static void seat_pointer_leave(void *d, struct river_seat_v1 *rs)
 {
 	hover = NULL;
 }
-static void seat_shell_surface_interaction(void *d, struct river_seat_v1 *rs, struct river_shell_surface_v1 *ss) {}
+static void seat_shell_surface_interaction(void *d, struct river_seat_v1 *rs, struct river_shell_surface_v1 *ss)
+{
+	if (saver_on)
+		fx_set_saver(false);                    /* klik w wygaszacz */
+}
 static void seat_op_delta(void *d, struct river_seat_v1 *rs, int32_t dx, int32_t dy)
 {
 	op.dx = dx;
@@ -2154,22 +2167,24 @@ int main(void)
 	/* klatki animacji okien (jednorazowo, ~60 Hz) i żywej tapety */
 	int afd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC);
 	int sfd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC);
+	int gfd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC);   /* wygaszacz (fx.c) */
 	bool anim_armed = false;
-	int sky_ms = -1;
+	int sky_ms = -1, saver_ms = 0;
 	int bfd = tray_init();          /* zasobnik po D-Bus; -1 = bez zasobnika */
-	struct pollfd fds[5] = {
+	struct pollfd fds[6] = {
 		{ .fd = wl_display_get_fd(display), .events = POLLIN },
 		{ .fd = tfd, .events = POLLIN },
 		{ .fd = afd, .events = POLLIN },
 		{ .fd = sfd, .events = POLLIN },
 		{ .fd = bfd, .events = POLLIN },  /* poll pomija ujemny fd */
+		{ .fd = gfd, .events = POLLIN },
 	};
 	tray_dispatch();
 	while (running) {
 		while (wl_display_prepare_read(display) != 0)
 			wl_display_dispatch_pending(display);
 		wl_display_flush(display);
-		if (poll(fds, 5, -1) < 0) {
+		if (poll(fds, 6, -1) < 0) {
 			wl_display_cancel_read(display);
 			continue;
 		}
@@ -2220,6 +2235,14 @@ int main(void)
 				timerfd_settime(sfd, 0, &it, NULL);
 				sky_ms = want;
 			}
+		}
+
+		/* wygaszacz: budzik jednorazowy, za tyle ms, ile chce następna klatka */
+		bool saver_tick = (fds[5].revents & POLLIN) && read(gfd, &n, sizeof n) > 0;
+		if (saver_tick || saver_on != (saver_ms > 0)) {
+			saver_ms = fx_saver_frame(now_ms());
+			struct itimerspec it = { .it_value = { saver_ms / 1000, saver_ms % 1000 * 1000000L } };
+			timerfd_settime(gfd, 0, &it, NULL);
 		}
 	}
 

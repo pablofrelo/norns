@@ -23,6 +23,10 @@
 #define NOTE_MS       6000          /* jak długo wisi zwykłe powiadomienie */
 #define NOTE_CHAR_MS  40            /* tempo „pisania” tekstu (ms na znak) */
 #define NOTE_TYPE_MAX 3500          /* ale całość najwyżej tyle ms */
+#define SAVER_STEP_MS 1500          /* wygaszacz: co tyle kafel się dzieli albo zwija */
+#define SAVER_MS      400           /* ruch podziału */
+#define SAVER_MAX     12            /* najwyżej tyle kafli na monitorze */
+#define SAVER_MIN     200           /* dzielimy tylko kafle od tylu logicznych px */
 
 #endif /* NORNS_CONFIG_CONSTS */
 

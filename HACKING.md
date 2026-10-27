@@ -16,7 +16,7 @@ commitów są po polsku, README po angielsku.
 | `deco.c` | poświata / cień wokół okien (4 paski dekoracji) |
 | `tray.c` | zasobnik: StatusNotifierWatcher/Host po sd-bus, ikony (pixmapy, PNG), dbusmenu |
 | `verdandi.c` | demon powiadomień `org.freedesktop.Notifications` (treść; rysuje urd.c) |
-| `fx.c` | warstwa efektów nad ekranem (na razie linie kineskopu) — miejsce na kolejne efekty |
+| `fx.c` | warstwa efektów nad ekranem: linie kineskopu i wygaszacz z kafli BSP (własny budzik w `main()`, rysuje poza sekwencjami) — miejsce na kolejne efekty |
 | `sfx.c` | dźwięki generowane w C (serwo terminala, migawka, stukot klawiszy), odtwarzane przez `pw-play` |
 | `sensors.c` | CPU, RAM, temperatura, bateria, sieć, głośność (co 2 s) |
 | `shm.c` | bufory `wl_shm` (`buf_new/attach/drop`, jednorazowe i wielokrotne) |
@@ -27,7 +27,8 @@ commitów są po polsku, README po angielsku.
 - River prowadzi WM przez **sekwencje**: `manage_start` → (decyzje: fokus,
   `propose_dimensions`, pełny ekran, nowe okna) → `manage_finish`, potem
   `render_start` → (pozycje, przycięcia, kolejność, ramki, pasek) →
-  `render_finish`. Requesty tylko w swojej sekwencji.
+  `render_finish`. Requesty tylko w swojej sekwencji (treść naszych
+  powierzchni — tapeta, wygaszacz — można commitować też poza nimi).
 - Zdarzenia (klawisze, D-Bus, timery) zmieniają tylko nasze dane i wołają
   `river_window_manager_v1_manage_dirty(wm)`; resztę robi następna sekwencja.
 - `propose_dimensions` wysyłamy **tylko przy zmianie** (`w->pw/ph`) — każdy
@@ -36,7 +37,7 @@ commitów są po polsku, README po angielsku.
 - Nasze powierzchnie (pasek, tapeta, powiadomienia, menu, efekty) to
   `river_shell_surface_v1`; commit w render z `sync_next_commit`.
 - Pętla `main()`: `poll` na Wayland, timer 2 s (sensory,
-  powiadomienia), timer animacji 16 ms, timer tapety, fd D-Bus.
+  powiadomienia), timer animacji 16 ms, timer tapety, timer wygaszacza, fd D-Bus.
 
 ## Rzeczy, o które łatwo się potknąć
 

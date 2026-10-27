@@ -35,6 +35,9 @@ and used daily on my own machine.
   type themselves out at the top centre of every monitor; critical
   ones stay until clicked, a click runs the default action (if another daemon
   such as mako is already running, norns leaves it alone)
+- screen saver built in: BSP tiles that keep splitting in half and folding back,
+  the way norns lays out windows, in the colours of the current theme
+  (`norns-ctl saver`; mouse movement, a click or any norns key wakes it)
 - MU/TH/UR: green glow around the focused window, twinkling stars, a comet now
   and then; Super+A turns all motion off
 
@@ -108,6 +111,7 @@ Scripts and other programs can drive norns over D-Bus (installed with
     norns-ctl theme gruvbox     # or muthur, or toggle
     norns-ctl anim off          # on, off, or toggle when omitted
     norns-ctl crt on            # CRT scanlines
+    norns-ctl saver on          # screen saver (off, or toggle when omitted)
     norns-ctl drop              # slide-up terminal
     norns-ctl lock              # lock the screen
     norns-ctl power poweroff    # or logout, reboot
@@ -129,9 +133,14 @@ is remembered in `~/.local/state/norns/theme`.
 
 The screen locker is set per theme in `config.h` (`lock_gruvbox`,
 `lock_muthur`); swaylock by default, any ext-session-lock-v1 locker works.
-norns does not lock on idle by itself — for that, add swayidle to river's init:
+norns does not watch for idle time by itself — for the screen saver and the
+lock, add swayidle to river's init (saver after 10 minutes, lock after 20):
 
-    swayidle -w timeout 600 'norns-ctl lock' &
+    swayidle -w timeout 600 'norns-ctl saver on' resume 'norns-ctl saver off' \
+                timeout 1200 'norns-ctl lock' &
+
+Saver timing (split interval, animation, number and minimum size of tiles) is in
+`config.h` (`SAVER_*`).
 
 ## License
 
