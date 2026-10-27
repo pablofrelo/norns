@@ -136,6 +136,7 @@ static void crt_render(void)
  * Włącza norns-ctl saver (np. ze swayidle); budzi ruch myszy, klik, skrót norns. */
 
 bool saver_on;
+uint64_t saver_since;
 
 #define SV_NODES (2 * SAVER_MAX + 2)
 
@@ -368,8 +369,10 @@ int fx_saver_frame(uint64_t now)
 
 void fx_set_saver(bool on)
 {
-	if (on && !saver_on)
-		srand((unsigned)now_ms());      /* za każdym razem inny układ */
+	if (on && !saver_on) {
+		saver_since = now_ms();
+		srand((unsigned)saver_since);   /* za każdym razem inny układ */
+	}
 	saver_on = on;
 	river_window_manager_v1_manage_dirty(wm);
 }

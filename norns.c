@@ -863,6 +863,7 @@ static void run(const struct key *k)
 	struct win *n_w;
 
 	if (saver_on) {                         /* pierwszy skrót tylko budzi z wygaszacza */
+		fprintf(stderr, "norns: wygaszacz — budzi skrót\n");
 		fx_set_saver(false);
 		return;
 	}
@@ -1376,8 +1377,20 @@ static void seat_window_interaction(void *d, struct river_seat_v1 *rs, struct ri
 
 static void seat_pointer_position(void *d, struct river_seat_v1 *rs, int32_t x, int32_t y)
 {
-	if (saver_on && ptr_known && (x != ptr_x || y != ptr_y))
-		fx_set_saver(false);                    /* ruch myszy budzi z wygaszacza */
+	/* ruch myszy budzi z wygaszacza — liczony od pierwszej pozycji po włączeniu,
+	 * bo ptr_x/y bywa przesunięty przez norns (kursor za fokusem) */
+	static int ax, ay;
+	static bool anchored;
+	if (!saver_on) {
+		anchored = false;
+	} else if (!anchored) {
+		ax = x;
+		ay = y;
+		anchored = true;
+	} else if (abs(x - ax) > 8 || abs(y - ay) > 8) {
+		fprintf(stderr, "norns: wygaszacz — budzi mysz\n");
+		fx_set_saver(false);
+	}
 	ptr_x = x;
 	ptr_y = y;
 	ptr_known = true;
@@ -1390,8 +1403,10 @@ static void seat_pointer_leave(void *d, struct river_seat_v1 *rs)
 }
 static void seat_shell_surface_interaction(void *d, struct river_seat_v1 *rs, struct river_shell_surface_v1 *ss)
 {
-	if (saver_on)
-		fx_set_saver(false);                    /* klik w wygaszacz */
+	if (saver_on && now_ms() > saver_since + 500) {     /* klik w wygaszacz */
+		fprintf(stderr, "norns: wygaszacz — budzi klik\n");
+		fx_set_saver(false);
+	}
 }
 static void seat_op_delta(void *d, struct river_seat_v1 *rs, int32_t dx, int32_t dy)
 {

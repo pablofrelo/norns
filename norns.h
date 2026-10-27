@@ -187,6 +187,7 @@ extern bool crt_on;
 void fx_init(void);
 void fx_set_crt(bool on);
 extern bool saver_on;
+extern uint64_t saver_since;                            /* kiedy włączony (now_ms) */
 void fx_set_saver(bool on);
 int fx_saver_frame(uint64_t now);                       /* klatka wygaszacza; za ile ms następna (0 = wył.) */
 void fx_render(void);                                   /* w sekwencji render, na końcu */
