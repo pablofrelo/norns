@@ -103,8 +103,8 @@ static uint32_t note_put(const char *app, uint32_t replaces, const char *summary
 	n->urgency = urgency;
 	n->has_default = has_default;
 	n->t0 = now_ms();
-	n->expire = urgency == 2 || timeout == 0 ? 0 :             /* czas na czytanie liczy się po wypisaniu */
-	            n->t0 + note_type_ms(note_chars(n)) + (timeout > 0 ? timeout : NOTE_MS);
+	n->keep = urgency == 2 || timeout == 0 ? 0 : timeout > 0 ? timeout : NOTE_MS;
+	n->expire = n->keep ? n->t0 + note_type_ms(note_chars(n)) + n->keep : 0;   /* czytanie po wypisaniu */
 	fprintf(stderr, "verdandi: powiadomienie %u od %s\n", n->id, n->app);
 	char all[sizeof n->summary + sizeof n->body];
 	snprintf(all, sizeof all, "%s%s", n->summary, n->body);    /* w tej kolejności się pisze */
@@ -223,9 +223,29 @@ void notify_init(sd_bus *b)
 		                "czekam w kolejce, aż się zakończy\n");
 }
 
-/* Co 2 s z pętli: przeterminowane znikają. */
+/* Po wyjściu z zen: wstrzymane powiadomienia piszą się od nowa i dopiero
+ * wtedy liczy się ich czas. */
+void notify_release(void)
+{
+	uint64_t now = now_ms();
+	for (int i = 0; i < notes_n; i++) {
+		struct note *n = &notes[i];
+		n->t0 = now;
+		n->expire = n->keep ? now + note_type_ms(note_chars(n)) + n->keep : 0;
+	}
+	if (notes_n) {                              /* stukot pod najnowsze */
+		char all[sizeof notes[0].summary + sizeof notes[0].body];
+		snprintf(all, sizeof all, "%s%s", notes[0].summary, notes[0].body);
+		sfx_typing(all, note_type_ms(note_chars(&notes[0])));
+	}
+	changed();
+}
+
+/* Co 2 s z pętli: przeterminowane znikają (w zen czekają). */
 void notify_tick(void)
 {
+	if (zen_on)
+		return;
 	uint64_t now = now_ms();
 	for (int i = notes_n - 1; i >= 0; i--)
 		if (notes[i].expire && now >= notes[i].expire)
@@ -235,6 +255,8 @@ void notify_tick(void)
 /* Trwa wpisywanie tekstu — potrzebne kolejne klatki. */
 bool notify_busy(uint64_t now)
 {
+	if (zen_on)
+		return false;
 	for (int i = 0; i < notes_n; i++) {
 		if (now < notes[i].t0 + note_type_ms(note_chars(&notes[i])))
 			return true;

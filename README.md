@@ -6,7 +6,9 @@ compositor (river-window-management-v1), with its own bar, **urd**.
 Every new window splits the focused tile in half along its longer side. Each
 monitor has nine tags, each tag its own tree. Two looks are built in and
 switch together — window borders, bar, wallpaper and terminal palette:
-**GRUVBOX** and **MU/TH/UR** (faded phosphor green with a live starfield).
+**GRUVBOX**, **MU/TH/UR** (faded phosphor green with a live starfield), and two
+calm ones: **GRAFIT** (near-monochrome graphite with a muted sage accent, the zen
+theme) and **PAPIER** (light, pastel paper).
 
 The code was written by Claude (Anthropic) under my direction and is tested
 and used daily on my own machine.
@@ -35,6 +37,9 @@ and used daily on my own machine.
   type themselves out at the top centre of every monitor; critical
   ones stay until clicked, a click runs the default action (if another daemon
   such as mako is already running, norns leaves it alone)
+- zen mode (Super+Z, on every monitor at once): the GRAFIT theme, no bar, gaps, borders or glow;
+  notifications wait until you leave zen and norns' own sounds go quiet —
+  the keyboard works as usual
 - screen saver built in: BSP tiles that keep splitting in half and folding back,
   the way norns lays out windows, in the colours of the current theme
   (`norns-ctl saver`; mouse movement, a click or any norns key wakes it)
@@ -91,9 +96,10 @@ survives a crash:
 | Super+Ctrl+, / Super+Ctrl+. | send window to previous / next monitor |
 | Super+F | toggle floating |
 | Super+Ctrl+F | toggle fullscreen |
-| Super+T | switch theme |
+| Super+T | next theme (gruvbox, muthur, grafit, papier) |
 | Super+A | animations on/off |
 | Super+Ctrl+A | CRT scanlines on/off |
+| Super+Z | zen mode on/off |
 | Super+left drag | move (floating) / swap or insert (tiles) |
 | Super+right drag | resize (floating) / move split (tiles) |
 | volume keys | volume via wpctl |
@@ -108,10 +114,11 @@ Scripts and other programs can drive norns over D-Bus (installed with
     norns-ctl view 3            # show tag 3 on the monitor under the pointer
     norns-ctl send 3            # send the focused window to tag 3
     norns-ctl output next       # focus the next monitor
-    norns-ctl theme gruvbox     # or muthur, or toggle
+    norns-ctl theme papier      # gruvbox, muthur, grafit, papier, or toggle
     norns-ctl anim off          # on, off, or toggle when omitted
     norns-ctl crt on            # CRT scanlines
     norns-ctl saver on          # screen saver (off, or toggle when omitted)
+    norns-ctl zen               # zen mode: on, off, or toggle when omitted
     norns-ctl drop              # slide-up terminal
     norns-ctl lock              # lock the screen
     norns-ctl power poweroff    # or logout, reboot
@@ -120,19 +127,20 @@ Scripts and other programs can drive norns over D-Bus (installed with
 
 ## Configuration
 
-Everything lives in `config.h`: gaps, borders, animation times, both themes,
+Everything lives in `config.h`: gaps, borders, animation times, the themes
+(and which one zen switches to, `ZEN_THEME`),
 programs, keys, application rules and windows that always float. Rebuild after
 editing.
 
 New windows are logged to `/tmp/norns.log` with their `app_id`, which is what
 rules match on.
 
-On theme change norns runs `~/.config/norns/theme <gruvbox|muthur>` if it is
+On theme change norns runs `~/.config/norns/theme <theme name>` if it is
 executable — see `theme.example` for switching foot's palette. The chosen theme
 is remembered in `~/.local/state/norns/theme`.
 
 The screen locker is set per theme in `config.h` (`lock_gruvbox`,
-`lock_muthur`); swaylock by default, any ext-session-lock-v1 locker works.
+`lock_muthur`, …); swaylock by default, any ext-session-lock-v1 locker works.
 norns does not watch for idle time by itself — for the screen saver and the
 lock, add swayidle to river's init (saver after 10 minutes, lock after 20):
 

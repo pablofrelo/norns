@@ -54,6 +54,27 @@ static const char *const run_muthur[] = {
 	"--selection-color=163d22ff", "--selection-text-color=d4ffe0ff", "--border-color=8cffb0ff", NULL
 };
 
+/* GRAFIT i PAPIER: foot dostaje tło i tekst motywu do palety [colors-dark]
+ * (kolory ANSI zostają z niej — przy jasnym papierze to paleta gruvboksa). */
+static const char *const term_grafit[] = {
+	"foot", "-o", "main.initial-color-theme=dark",
+	"-o", "colors-dark.background=1c1c1c", "-o", "colors-dark.foreground=c8c4bc", NULL
+};
+static const char *const term_papier[] = {
+	"foot", "-o", "main.initial-color-theme=dark",
+	"-o", "colors-dark.background=ece6da", "-o", "colors-dark.foreground=3b3833", NULL
+};
+static const char *const run_grafit[] = {
+	"fuzzel", "--font=JetBrainsMono Nerd Font:size=11", "--border-radius=0", "--border-width=2",
+	"--background=1c1c1cf0", "--text-color=c8c4bcff", "--match-color=9aa597ff",
+	"--selection-color=3a3a3aff", "--selection-text-color=c8c4bcff", "--border-color=7a7670ff", NULL
+};
+static const char *const run_papier[] = {
+	"fuzzel", "--font=JetBrainsMono Nerd Font:size=11", "--border-radius=0", "--border-width=2",
+	"--background=ece6daf0", "--text-color=3b3833ff", "--match-color=5f7f78ff",
+	"--selection-color=cfc7b8ff", "--selection-text-color=3b3833ff", "--border-color=8fa6a0ff", NULL
+};
+
 /* Blokada ekranu (Super+Shift+L, wyłącznik, norns-ctl lock). Domyślnie swaylock
  * w kolorach motywu; inny locker (hyprlock, gtklock…) — wpisz tu jego polecenie.
  * Locker musi znać ext-session-lock-v1. -f: swaylock odłącza się po zablokowaniu. */
@@ -73,6 +94,22 @@ static const char *const lock_muthur[] = {
 	"--text-ver-color", "d4ffe0", "--inside-wrong-color", "050806", "--ring-wrong-color", "ff5a4a",
 	"--text-wrong-color", "ff5a4a", NULL
 };
+static const char *const lock_grafit[] = {
+	"swaylock", "-f", "-c", "161616", "--font", "JetBrainsMono Nerd Font",
+	"--inside-color", "1c1c1c", "--ring-color", "3a3a3a", "--line-color", "00000000",
+	"--separator-color", "00000000", "--key-hl-color", "9aa597", "--bs-hl-color", "c9a66b",
+	"--text-color", "c8c4bc", "--inside-ver-color", "1c1c1c", "--ring-ver-color", "9aa597",
+	"--text-ver-color", "9aa597", "--inside-wrong-color", "1c1c1c", "--ring-wrong-color", "b0675f",
+	"--text-wrong-color", "b0675f", NULL
+};
+static const char *const lock_papier[] = {
+	"swaylock", "-f", "-c", "e4ddd0", "--font", "JetBrainsMono Nerd Font",
+	"--inside-color", "ece6da", "--ring-color", "cfc7b8", "--line-color", "00000000",
+	"--separator-color", "00000000", "--key-hl-color", "5f7f78", "--bs-hl-color", "a07a3a",
+	"--text-color", "3b3833", "--inside-ver-color", "ece6da", "--ring-ver-color", "5f7f78",
+	"--text-ver-color", "5f7f78", "--inside-wrong-color", "ece6da", "--ring-wrong-color", "a8524a",
+	"--text-wrong-color", "a8524a", NULL
+};
 
 const struct theme themes[] = {
 	{
@@ -82,7 +119,7 @@ const struct theme themes[] = {
 		.bg = 0x282828, .line = 0x504945, .dim = 0x928374, .fg = 0xebdbb2,
 		.accent = 0x8ec07c, .warn = 0xfabd2f, .alarm = 0xfb4934,
 		.focus = 0x8ec07c, .unfocus = 0x3c3836,
-		.wall = 0x1d2021, .dot = 0x32302f,
+		.wall = 0x1d2021, .dot = 0x32302f, .look = LOOK_DOTS,
 	},
 	{
 		.name = "muthur", .label = "MU/TH/UR",
@@ -91,9 +128,29 @@ const struct theme themes[] = {
 		.bg = 0x050806, .line = 0x163d22, .dim = 0x4f9a68, .fg = 0x8cffb0,
 		.accent = 0xd4ffe0, .warn = 0xffb000, .alarm = 0xff5a4a,
 		.focus = 0x8cffb0, .unfocus = 0x163d22,
-		.wall = 0x050806, .dot = 0x163d22,
+		.wall = 0x050806, .dot = 0x163d22, .look = LOOK_PHOSPHOR,
+	},
+	{
+		.name = "grafit", .label = "GRAFIT",   /* motyw trybu zen (ZEN_THEME) */
+		.font = "JetBrainsMono Nerd Font:pixelsize=14",
+		.term = term_grafit, .run = run_grafit, .lock = lock_grafit,
+		.bg = 0x1c1c1c, .line = 0x3a3a3a, .dim = 0x7a7670, .fg = 0xc8c4bc,
+		.accent = 0x9aa597, .warn = 0xc9a66b, .alarm = 0xb0675f,
+		.focus = 0x9aa597, .unfocus = 0x2e2e2e,
+		.wall = 0x161616, .dot = 0x222222, .look = LOOK_PLAIN,
+	},
+	{
+		.name = "papier", .label = "PAPIER",
+		.font = "JetBrainsMono Nerd Font:pixelsize=14",
+		.term = term_papier, .run = run_papier, .lock = lock_papier,
+		.bg = 0xece6da, .line = 0xcfc7b8, .dim = 0x8a8478, .fg = 0x3b3833,
+		.accent = 0x5f7f78, .warn = 0xa07a3a, .alarm = 0xa8524a,
+		.focus = 0x8fa6a0, .unfocus = 0xd8d1c4,
+		.wall = 0xe4ddd0, .dot = 0xd6cebf, .look = LOOK_PLAIN,
 	},
 };
+const int nthemes = sizeof themes / sizeof themes[0];
+#define ZEN_THEME "grafit"          /* Super+Z przełącza też na ten motyw (NULL = bez zmiany) */
 
 /* ---------- programy ---------- */
 
@@ -140,6 +197,7 @@ static const struct key keys[] = {
 	{ SUPER,        XKB_KEY_a,      ANIM_TOGGLE,  0, NULL },  /* efekty wł./wył. */
 	{ SUPER | CTRL, XKB_KEY_f,      FULLSCREEN_TOGGLE, 0, NULL },
 	{ SUPER | CTRL, XKB_KEY_a,      CRT_TOGGLE, 0, NULL },  /* linie kineskopu (fx.c) */
+	{ SUPER,        XKB_KEY_z,      ZEN_TOGGLE, 0, NULL },  /* zen: bez paska, przerw, ramek, powiadomień */
 	{ SUPER,        XKB_KEY_h,      FOCUS_DIR, LEFT,  NULL },
 	{ SUPER,        XKB_KEY_j,      FOCUS_DIR, DOWN,  NULL },
 	{ SUPER,        XKB_KEY_k,      FOCUS_DIR, UP,    NULL },
@@ -176,9 +234,10 @@ static const char *const help_lines[] = {
 	"Super+Ctrl+, / .      wyślij okno na poprzedni / następny monitor",
 	"Super+F               okno pływające / kafel",
 	"Super+Ctrl+F          pełny ekran",
-	"Super+T               zmień motyw",
+	"Super+T               zmień motyw (gruvbox, muthur, grafit, papier)",
 	"Super+A               animacje wł./wył.",
 	"Super+Ctrl+A          linie kineskopu wł./wył.",
+	"Super+Z               zen: motyw grafit, bez paska, przerw, ramek, powiadomień i dźwięków",
 	"Super+lewy przycisk   przesuń / zamień kafle",
 	"Super+prawy przycisk  rozmiar / proporcje podziału",
 	"Super+Escape          wyjdź z norns",

@@ -1,10 +1,12 @@
 #!/bin/sh
 # Przykład ~/.config/norns/theme — norns woła go przy przełączeniu motywu:
-#   theme gruvbox | theme muthur
+#   theme gruvbox | theme muthur | theme grafit | theme papier
 # Skopiuj do ~/.config/norns/theme i nadaj prawo wykonania (chmod +x).
 
 case "$1" in
-gruvbox)
+gruvbox|grafit|papier)
+	# foot ma tylko dwie palety: otwarte terminale w grafit i papier dostają
+	# [colors-dark]; nowe (config.h) mają tło i tekst motywu
 	pkill -USR1 -x foot     # foot: paleta [colors-dark]
 	;;
 muthur)

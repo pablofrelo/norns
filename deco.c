@@ -61,7 +61,7 @@ void deco_render(struct win *w)
 	uint32_t color = 0;
 	double amax = 0;
 
-	if (theme_idx == 1 && focus) {
+	if (t->look == LOOK_PHOSPHOR && focus) {
 		kind = DECO_GLOW;
 		r = w->floating ? FLOAT_R : GAP / 2;
 		color = t->focus;
@@ -73,7 +73,7 @@ void deco_render(struct win *w)
 		amax = 0.5;
 	}
 	int ww = w->dw, wh = w->dh;
-	if (ww <= 0 || wh <= 0)
+	if (ww <= 0 || wh <= 0 || zen_on)
 		kind = DECO_NONE;
 	if (kind == DECO_NONE) {
 		r = 0;

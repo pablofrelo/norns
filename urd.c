@@ -16,7 +16,7 @@
 #define PAD_BASE 8                  /* odstępy poziome na pasku (logiczne px) */
 static int PAD = PAD_BASE;          /* w pikselach bufora — przeskalowane przy rysowaniu */
 
-static struct fcft_font *fonts[2];  /* po jednym na motyw, skala 1 */
+static struct fcft_font *fonts[8];  /* po jednym na motyw, skala 1 */
 static struct fcft_font *font;      /* font bieżącego rysowania (może być przeskalowany) */
 
 /* Font motywu w danej skali: wzorzec z config.h z przeliczonym pixelsize. */
@@ -395,13 +395,13 @@ static uint32_t star_color(const struct star *st, uint64_t now)
 static void sky_mark(struct sky *k, pixman_image_t *img)
 {
 	const struct theme *t = THEME;
-	const char *mark = theme_idx == 0 ? "norns" : "MU/TH/UR 6000";
+	const char *mark = t->look == LOOK_PHOSPHOR ? "MU/TH/UR 6000" : "norns";
 	k->mark_w = text_width(mark);
 	k->mark_h = font->height;
 	k->mark_x = k->w - k->mark_w - 24;
 	k->mark_y = k->h - k->mark_h - 24;
 	rect(img, k->mark_x, k->mark_y, k->mark_w, k->mark_h, t->wall);
-	text(img, k->mark_x, k->mark_y, k->mark_h, k->w, mark, theme_idx == 0 ? t->focus : t->dim);
+	text(img, k->mark_x, k->mark_y, k->mark_h, k->w, mark, t->look == LOOK_DOTS ? t->focus : t->dim);
 }
 
 /* Głowa i ogon komety w chwili now: ciągła smuga co piksel wstecz od głowy,
@@ -434,10 +434,11 @@ static void sky_full(struct output *o, struct sky *k, pixman_image_t *img, uint6
 {
 	const struct theme *t = THEME;
 	rect(img, 0, 0, k->w, k->h, t->wall);
-	if (theme_idx == 0) {
-		for (int y = 12; y < k->h; y += 24)
-			for (int x = 12; x < k->w; x += 24)
-				rect(img, x, y, 2, 2, t->dot);
+	if (t->look != LOOK_PHOSPHOR) {                          /* bez gwiazd */
+		if (t->look == LOOK_DOTS)
+			for (int y = 12; y < k->h; y += 24)
+				for (int x = 12; x < k->w; x += 24)
+					rect(img, x, y, 2, 2, t->dot);
 		sky_mark(k, img);
 		return;
 	}
@@ -581,7 +582,7 @@ static int sky_frame(struct output *o, struct sky *k, uint64_t now)
 int urd_sky_frame(uint64_t now)
 {
 	font = fonts[theme_idx];
-	if (theme_idx != 1 || !anim_on)
+	if (THEME->look != LOOK_PHOSPHOR || !anim_on)
 		return -1;
 	int next = TWINKLE_MS;
 	struct output *o;
@@ -970,7 +971,7 @@ static int notes_height(int scale)
 static void notes_render(struct output *o)
 {
 	struct surf *s = &o->note;
-	bool here = notes_n > 0;                                  /* na każdym monitorze */
+	bool here = notes_n > 0 && !zen_on;                       /* na każdym monitorze; zen — czekają */
 	if (!here) {
 		if (o->note_shown) {                                  /* schowaj: pusty bufor */
 			river_shell_surface_v1_sync_next_commit(s->ss);
@@ -1000,7 +1001,10 @@ void urd_render(struct output *o)
 	river_node_v1_set_position(o->wall.node, o->wall.x, o->wall.y);
 	river_node_v1_set_position(o->bar.node, o->bar.x, o->bar.y);
 	river_node_v1_place_bottom(o->wall.node);   /* tapeta pod wszystkim */
-	river_node_v1_place_top(o->bar.node);       /* pasek nad wszystkim */
+	if (zen_on)
+		river_node_v1_place_bottom(o->bar.node);    /* zen: pasek pod tapetą */
+	else
+		river_node_v1_place_top(o->bar.node);       /* pasek nad wszystkim */
 	notes_render(o);
 	menu_render(o);
 }
@@ -1153,7 +1157,7 @@ void urd_cursor(const char *name)
 bool urd_init(void)
 {
 	fcft_init(FCFT_LOG_COLORIZE_AUTO, false, FCFT_LOG_CLASS_ERROR);
-	for (int i = 0; i < 2; i++) {
+	for (int i = 0; i < nthemes && i < 8; i++) {
 		const char *names[] = { themes[i].font, "monospace:pixelsize=14" };
 		fonts[i] = fcft_from_name(2, names, NULL);
 		if (!fonts[i]) {

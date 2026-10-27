@@ -158,7 +158,7 @@ static void layout(struct node *n, int x, int y, int w, int h)
 {
 	n->x = x; n->y = y; n->w = w; n->h = h;
 	if (n->win) {
-		int in = GAP / 2 + BORDER;
+		int in = zen_on ? 0 : GAP / 2 + BORDER;
 		n->win->x = x + in;
 		n->win->y = y + in;
 		n->win->w = w - 2 * in > 1 ? w - 2 * in : 1;
@@ -660,7 +660,7 @@ static void load_theme(void)
 	if (!f)
 		return;
 	if (fscanf(f, "%31s", name) == 1)
-		for (int i = 0; i < 2; i++)
+		for (int i = 0; i < nthemes; i++)
 			if (!strcmp(name, themes[i].name))
 				theme_idx = i;
 	fclose(f);
@@ -689,18 +689,35 @@ void power_action(int i)
 		spawn(i == 1 ? reboot : poweroff);
 }
 
-/* Przełącza motyw: ramki, pasek, tapeta, plus skrypt użytkownika dla aplikacji. */
-void toggle_theme(void)
+static int theme_by_name(const char *name)
 {
-	theme_idx = !theme_idx;
+	for (int i = 0; name && i < nthemes; i++)
+		if (!strcmp(name, themes[i].name))
+			return i;
+	return -1;
+}
+
+/* Ustawia motyw: ramki, pasek, tapeta, plus skrypt użytkownika dla aplikacji. */
+static void set_theme(int i, bool notice)
+{
+	if (i < 0 || i == theme_idx)
+		return;
+	theme_idx = i;
 	bars_dirty = true;
 	struct output *o;
 	wl_list_for_each(o, &outputs, link)
 		o->wall.dirty = true;
 	save_theme();
 	run_theme_script();
-	norns_notice("Motyw", THEME->label);
+	if (notice)
+		norns_notice("Motyw", THEME->label);
 	river_window_manager_v1_manage_dirty(wm);
+}
+
+/* Następny motyw po kolei (Super+T, klik na pasku). */
+void toggle_theme(void)
+{
+	set_theme((theme_idx + 1) % nthemes, true);
 }
 
 /* ---------- terminal wysuwany (Super+`) ---------- */
@@ -831,10 +848,10 @@ static void screenshot(int kind)
 	snprintf(script, sizeof script,
 	         "d=\"$(xdg-user-dir PICTURES 2>/dev/null || echo \"$HOME/Pictures\")/Screenshots\"; "
 	         "mkdir -p \"$d\"; f=\"$d/Screenshot from $(date '+%%Y-%%m-%%d %%H-%%M-%%S').png\"; "
-	         "%s \"$f\" || exit 1; pw-play --volume 0.5 '%s' & "
+	         "%s \"$f\" || exit 1; %s'%s' & "
 	         "wl-copy --type image/png < \"$f\" 2>/dev/null; "
 	         "notify-send -a 'zrzut ekranu' 'Zapisano i skopiowano' \"$f\"",
-	         what, sfx_path("shutter.wav"));
+	         what, zen_on ? "true " : "pw-play --volume 0.5 ", sfx_path("shutter.wav"));
 	spawn((const char *const[]){ "/bin/sh", "-c", script, NULL });
 }
 
@@ -854,6 +871,28 @@ static void power_menu(void)
 	         "case \"$c\" in ZABLOKUJ) exec \"$HOME/.local/bin/norns-ctl\" lock;; WYLOGUJ) a=logout;; RESTART) a=reboot;; WYŁĄCZ) a=poweroff;; *) exit 0;; esac; "
 	         "exec \"$HOME/.local/bin/norns-ctl\" power $a");
 	spawn((const char *const[]){ "/bin/sh", "-c", script, NULL });
+}
+
+/* Zen: bez paska, przerw, ramek i poświaty; powiadomienia czekają, dźwięki milkną. */
+bool zen_on;
+
+static void zen_set(bool on)
+{
+	static int before = -1;         /* motyw sprzed zen */
+	if (on == zen_on)
+		return;
+	zen_on = on;
+	bars_dirty = true;
+	int zt = theme_by_name(ZEN_THEME);
+	if (on && zt >= 0) {
+		before = theme_idx;
+		set_theme(zt, false);
+	} else if (!on && before >= 0 && theme_idx == zt) {
+		set_theme(before, false);   /* zmieniony w trakcie zen — zostaje */
+	}
+	if (!on)
+		notify_release();
+	river_window_manager_v1_manage_dirty(wm);
 }
 
 /* Wołane z eventu pressed — zmieniamy tylko nasze dane, requesty idą w manage. */
@@ -956,6 +995,9 @@ static void run(const struct key *k)
 		break;
 	case HELP:
 		spawn_run(true);
+		break;
+	case ZEN_TOGGLE:
+		zen_set(!zen_on);
 		break;
 	case CRT_TOGGLE:
 		fx_set_crt(!crt_on);
@@ -1202,8 +1244,9 @@ static const struct river_layer_shell_output_v1_listener lo_listener = {
 /* Stan dla skryptów: motyw, tryby, a dla każdego monitora widoczny tag i zajęte. */
 static void ctl_status(char *out, size_t n)
 {
-	int len = snprintf(out, n, "theme=%s anim=%s crt=%s saver=%s focus=%s", THEME->name,
+	int len = snprintf(out, n, "theme=%s anim=%s crt=%s saver=%s zen=%s focus=%s", THEME->name,
 	                   anim_on ? "on" : "off", crt_on ? "on" : "off", saver_on ? "on" : "off",
+	                   zen_on ? "on" : "off",
 	                   focused && focused->app_id ? focused->app_id : "-");
 	struct output *o;
 	wl_list_for_each(o, &outputs, link) {
@@ -1244,13 +1287,18 @@ static const char *ctl_run(const char *cmd, char *out, size_t n)
 		k.act = verb[0] == 'o' ? FOCUS_OUT : SEND_OUT;
 		k.arg = !strcmp(arg, "next") ? 1 : -1;
 	} else if (!strcmp(verb, "theme")) {
-		if (*arg && strcmp(arg, "toggle") && strcmp(arg, themes[0].name) && strcmp(arg, themes[1].name))
-			return "błąd: toggle, gruvbox albo muthur";
-		if (!*arg || !strcmp(arg, "toggle") || strcmp(arg, THEME->name))
+		if (!*arg || !strcmp(arg, "toggle"))
 			toggle_theme();
+		else if (theme_by_name(arg) < 0)
+			return "błąd: toggle albo nazwa motywu (gruvbox, muthur, grafit, papier)";
+		else
+			set_theme(theme_by_name(arg), true);
 		return "ok";
 	} else if (!strcmp(verb, "crt")) {
 		fx_set_crt(on ? true : off ? false : !crt_on);
+		return "ok";
+	} else if (!strcmp(verb, "zen")) {
+		zen_set(on ? true : off ? false : !zen_on);
 		return "ok";
 	} else if (!strcmp(verb, "saver")) {
 		fx_set_saver(on ? true : off ? false : !saver_on);
@@ -1285,7 +1333,7 @@ static const char *ctl_run(const char *cmd, char *out, size_t n)
 		k.arg = 1;
 	} else {
 		return "polecenia: status | view N | send N | output next|prev | send-output next|prev | "
-		       "theme [toggle|gruvbox|muthur] | anim [on|off] | crt [on|off] | saver [on|off] | drop | float | "
+		       "theme [toggle|gruvbox|muthur|grafit|papier] | anim [on|off] | crt [on|off] | saver [on|off] | zen [on|off] | drop | float | "
 		       "lock | power logout|reboot|poweroff | "
 		       "fullscreen | close | launcher | help";
 	}
@@ -1813,7 +1861,7 @@ static void wm_manage_start(void *d, struct river_window_manager_v1 *m)
 	if (act && (!focused || !visible(focused)))
 		set_focus(first_on(act));
 
-	int bh = urd_bar_height();
+	int bh = urd_bar_height(), g = zen_on ? 0 : GAP / 2;
 	wl_list_for_each(o, &outputs, link) {
 		/* obszar: bez cudzych paneli (layer shell), minus nasz pasek u góry */
 		bool u = o->uw > 0 && o->uh > 0;
@@ -1832,13 +1880,13 @@ static void wm_manage_start(void *d, struct river_window_manager_v1 *m)
 		o->wall.h = o->h;
 
 		o->ax = ax;
-		o->ay = ay + bh;
+		o->ay = ay + (zen_on ? 0 : bh);     /* zen: pasek schowany pod tapetą */
 		o->aw = aw;
-		o->ah = ah - bh;
+		o->ah = ah - (zen_on ? 0 : bh);
 
 		struct node *r = o->roots[o->tag];
 		if (r)
-			layout(r, o->ax + GAP / 2, o->ay + GAP / 2, o->aw - GAP, o->ah - GAP);
+			layout(r, o->ax + g, o->ay + g, o->aw - 2 * g, o->ah - 2 * g);
 	}
 	bars_dirty = false;
 	if (warp_focus && focused && visible(focused)) {
@@ -1957,8 +2005,9 @@ static void wm_render_start(void *d, struct river_window_manager_v1 *m)
 		uint32_t c = w == focused ? THEME->focus : THEME->unfocus;
 		if (w->floating || (w == op.w && op.kind == OP_MOVE))
 			river_node_v1_place_top(w->rn);    /* nad kafelkami (pasek i tak wyżej) */
-		river_window_v1_set_borders(w->rw, RIVER_WINDOW_V1_EDGES_TOP | RIVER_WINDOW_V1_EDGES_BOTTOM |
-		                                   RIVER_WINDOW_V1_EDGES_LEFT | RIVER_WINDOW_V1_EDGES_RIGHT,
+		river_window_v1_set_borders(w->rw, zen_on ? RIVER_WINDOW_V1_EDGES_NONE :
+		                            RIVER_WINDOW_V1_EDGES_TOP | RIVER_WINDOW_V1_EDGES_BOTTOM |
+		                            RIVER_WINDOW_V1_EDGES_LEFT | RIVER_WINDOW_V1_EDGES_RIGHT,
 		                            BORDER, C8(c >> 16), C8(c >> 8), C8(c), 0xffffffffu);
 	}
 

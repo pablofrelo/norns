@@ -74,6 +74,8 @@ static void sound_path(char *buf, size_t n, const char *name)
 /* Odtwarzanie w tle: kolejne pliki po kolei (sh -c), cicho. */
 static void play(const char *script)
 {
+	if (zen_on)
+		return;                     /* zen: cisza */
 	if (fork() == 0) {
 		setsid();
 		execl("/bin/sh", "sh", "-c", script, (char *)NULL);

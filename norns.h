@@ -41,9 +41,12 @@ struct theme {
 	uint32_t bg, line, dim, fg, accent, warn, alarm;   /* 0xRRGGBB */
 	uint32_t focus, unfocus;        /* ramki okien */
 	uint32_t wall, dot;             /* tapeta */
+	int look;                       /* LOOK_*: tapeta i poświata */
 };
+enum { LOOK_DOTS, LOOK_PHOSPHOR, LOOK_PLAIN };   /* kropki | gwiazdy, kometa, poświata | gładko */
 
 extern const struct theme themes[];
+extern const int nthemes;
 extern int theme_idx;
 #define THEME (&themes[theme_idx])
 
@@ -278,6 +281,7 @@ struct note {
 	int urgency;                    /* 0 niska, 1 zwykła, 2 krytyczna */
 	bool has_default;               /* klik wywołuje akcję "default" */
 	uint64_t t0, expire;            /* expire 0 = do kliknięcia */
+	int32_t keep;                   /* ile ms wisi po wypisaniu (0 = do kliknięcia) */
 };
 extern struct note notes[NOTE_MAX];
 extern int notes_n;
@@ -286,6 +290,8 @@ void notify_tick(void);
 bool notify_busy(uint64_t now);
 void notify_click(int i);
 void norns_notice(const char *summary, const char *body);   /* komunikat od norns */
+void notify_release(void);                              /* po zen: wstrzymane wychodzą */
+extern bool zen_on;                                     /* tryb zen (norns.c) */
 int note_type_ms(size_t chars);
 size_t note_chars(const struct note *n);   /* znaki (nie bajty) tytułu i treści */
 struct output *focus_output(void);
@@ -294,7 +300,7 @@ void ctl_init(struct sd_bus *bus);     /* norns.c: polecenia z norns-ctl */   /*
 /* ---------- skróty i reguły (definicje w config.h) ---------- */
 
 enum action { SPAWN, CLOSE, QUIT, VIEW, SEND_TAG, FOCUS_OUT, SEND_OUT, THEME_TOGGLE, FLOAT_TOGGLE,
-              ANIM_TOGGLE, FULLSCREEN_TOGGLE, VOLUME, FOCUS_DIR, SWAP_DIR, CRT_TOGGLE,
+              ANIM_TOGGLE, FULLSCREEN_TOGGLE, VOLUME, FOCUS_DIR, SWAP_DIR, CRT_TOGGLE, ZEN_TOGGLE,
               HELP, DROP_TOGGLE, SHOT, POWER_MENU, LOCK };
 enum { LEFT, DOWN, UP, RIGHT };
 
