@@ -1744,7 +1744,7 @@ static void wm_manage_start(void *d, struct river_window_manager_v1 *m)
 		if (!w->tiled_dirty)
 			continue;
 		w->tiled_dirty = false;
-		river_window_v1_set_tiled(w->rw, w->floating ? RIVER_WINDOW_V1_EDGES_NONE :
+		river_window_v1_set_tiled(w->rw, w->floating && !w->drop ? RIVER_WINDOW_V1_EDGES_NONE :
 		                          RIVER_WINDOW_V1_EDGES_TOP | RIVER_WINDOW_V1_EDGES_BOTTOM |
 		                          RIVER_WINDOW_V1_EDGES_LEFT | RIVER_WINDOW_V1_EDGES_RIGHT);
 	}
