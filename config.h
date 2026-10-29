@@ -11,8 +11,8 @@
 #define BORDER    2                 /* ramka okna */
 #define FLOAT_R   18                /* poświata / cień okien pływających */
 #define SLIDE_MS  140               /* ślizg przy zmianie tagu */
-#define MOVE_MS   120               /* dojazd okna na nowe miejsce */
-#define OPEN_MS   160               /* otwieranie okna (kineskop) */
+#define MOVE_MS   250               /* dojazd okna na nowe miejsce */
+#define OPEN_MS   300               /* otwieranie okna (kineskop) */
 #define DROP_W        1280          /* terminal wysuwany: stały rozmiar (logiczne px), */
 #define DROP_H        700           /* na mniejszym ekranie najwyżej 90% obszaru */
 #define DROP_APP_ID   "norns-drop"
