@@ -43,7 +43,8 @@ and used daily on my own machine.
   notifications wait until you leave zen and norns' own sounds go quiet —
   the keyboard works as usual
 - screen saver built in: BSP tiles that keep splitting in half and folding back,
-  the way norns lays out windows, in the colours of the current theme
+  the way norns lays out windows, in the colours of the current theme, each tile
+  labelled with the next word of the motto (`saver_words` in `config.h`)
   (`norns-ctl saver`; mouse movement, a click or any norns key wakes it)
 - MU/TH/UR: green glow around the focused window, twinkling stars, a comet now
   and then; Super+A turns all motion off

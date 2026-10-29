@@ -137,6 +137,22 @@ static int text(pixman_image_t *img, int x, int top, int h, int max_x, const cha
 	return x;
 }
 
+/* Tekst fontem motywu w danej skali — dla innych powierzchni (wygaszacz w fx.c). */
+int urd_text(pixman_image_t *img, int x, int top, int scale120, int max_x, const char *s, uint32_t rgb)
+{
+	struct fcft_font *keep = font;
+	font = font_at(scale120);
+	x = text(img, x, top, font->ascent + font->descent, max_x, s, rgb);
+	font = keep;
+	return x;
+}
+
+int urd_text_height(int scale120)
+{
+	struct fcft_font *f = font_at(scale120);
+	return f->ascent + f->descent;
+}
+
 int urd_bar_height(void)
 {
 	return fonts[theme_idx]->height + 8;

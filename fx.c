@@ -146,13 +146,16 @@ struct snode {
 	float from, to;                 /* udział dziecka a: skąd i dokąd jedzie */
 	uint64_t t0;
 	int w, h;                       /* ostatni rozmiar (piksele bufora) */
+	int word;                       /* napis: indeks w saver_words */
 };
 
 struct saver {
 	struct fx *f;
 	struct snode n[SV_NODES];
 	bool used[SV_NODES];
-	int newest;                     /* kafel z ramką fokusu */
+	int newest;                     /* kafel z wyróżnioną ramką */
+	int next_word;                  /* słowo dla następnego nowego kafla */
+	int sc;                         /* skala monitora * 120 */
 	uint64_t next;                  /* następny krok */
 	bool dirty;
 };
@@ -199,6 +202,28 @@ static int sv_alloc(struct saver *s)
 	return -1;
 }
 
+/* Napis w lewym górnym rogu kafla: pierwsza litera w akcencie (słowa > 2 znaków). */
+static void sv_word(struct saver *s, const struct snode *n, pixman_image_t *img, int x, int y, int w, int h)
+{
+	int cnt = 0;
+	while (saver_words[cnt])
+		cnt++;
+	if (!cnt)
+		return;
+	const char *wd = saver_words[n->word % cnt];
+	int pad = 8 * s->sc / 120, th = urd_text_height(s->sc), max_x = x + w - pad;
+	if (h < th + 2 * pad || w < 3 * pad)
+		return;
+	char first[8] = { 0 };
+	int k = 1;
+	while (wd[k] && (wd[k] & 0xc0) == 0x80 && k < 4)   /* pierwszy znak UTF-8 */
+		k++;
+	memcpy(first, wd, k);
+	bool lit = strlen(wd) > 2;
+	int tx = urd_text(img, x + pad, y + pad, s->sc, max_x, first, lit ? THEME->accent : THEME->dim);
+	urd_text(img, tx, y + pad, s->sc, max_x, wd + k, THEME->dim);
+}
+
 /* Rysuje drzewo od węzła i; g — przerwa, bd — ramka (piksele bufora). */
 static bool sv_draw(struct saver *s, int i, pixman_image_t *img, int x, int y, int w, int h,
                     int g, int bd, uint64_t now)
@@ -210,6 +235,7 @@ static bool sv_draw(struct saver *s, int i, pixman_image_t *img, int x, int y, i
 		if (w > 2 * (g + bd) && h > 2 * (g + bd)) {
 			box(img, x + g, y + g, w - 2 * g, h - 2 * g, i == s->newest ? THEME->dim : THEME->unfocus);
 			box(img, x + g + bd, y + g + bd, w - 2 * (g + bd), h - 2 * (g + bd), THEME->bg);
+			sv_word(s, n, img, x + g + bd, y + g + bd, w - 2 * (g + bd), h - 2 * (g + bd));
 		}
 		return false;
 	}
@@ -233,6 +259,7 @@ static void sv_step(struct saver *s, uint64_t now, int minpx)
 	for (int i = 0; i < SV_NODES; i++) {
 		struct snode *n = &s->n[i];
 		if (s->used[i] && n->a >= 0 && n->closing && !sv_moving(n, now)) {
+			n->word = s->n[n->to > 0.5f ? n->a : n->b].word;   /* napis ocalałego */
 			s->used[n->a] = s->used[n->b] = false;
 			n->a = -1;
 			n->closing = false;
@@ -272,6 +299,8 @@ static void sv_step(struct saver *s, uint64_t now, int minpx)
 		n->from = 1;                /* nowy kafel wjeżdża od prawej / od dołu */
 		n->to = 0.5f;
 		n->t0 = now;
+		s->n[a].word = n->word;     /* stary kafel zostaje przy swoim słowie */
+		s->n[b].word = s->next_word++;
 		s->newest = b;
 	} else if (nf) {
 		struct snode *n = &s->n[fold[rand() % nf]];
@@ -306,6 +335,7 @@ static bool sv_paint(struct output *o, uint64_t now, bool sync)
 	struct buf *b = *slot;
 	int sc = o->bar.vp && o->bar.scale120 ? o->bar.scale120 : 120;
 	int g = GAP * sc / 240, bd = BORDER * sc / 120 > 0 ? BORDER * sc / 120 : 1;
+	s->sc = sc;
 	box(b->img, 0, 0, b->w, b->h, THEME->wall);
 	bool m = sv_draw(s, 0, b->img, g, g, b->w - 2 * g, b->h - 2 * g, g, bd, now);
 	if (sync)
@@ -335,6 +365,7 @@ static void saver_render(void)
 			s->f = fx_new(bw, bh, true);                    /* kliki trafiają w wygaszacz */
 			s->used[0] = true;
 			s->n[0].a = -1;
+			s->next_word = 1;           /* kafel 0 ma słowo 0 */
 			s->next = now_ms() + SAVER_STEP_MS / 2;
 			s->dirty = sv_paint(o, now_ms(), true);
 		}

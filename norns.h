@@ -192,7 +192,10 @@ void fx_set_crt(bool on);
 extern bool saver_on;
 extern uint64_t saver_since;                            /* kiedy włączony (now_ms) */
 void fx_set_saver(bool on);
-int fx_saver_frame(uint64_t now);                       /* klatka wygaszacza; za ile ms następna (0 = wył.) */
+int fx_saver_frame(uint64_t now);
+extern const char *const saver_words[];                 /* config.h */
+int urd_text(pixman_image_t *img, int x, int top, int scale120, int max_x, const char *s, uint32_t rgb);
+int urd_text_height(int scale120);                       /* klatka wygaszacza; za ile ms następna (0 = wył.) */
 void fx_render(void);                                   /* w sekwencji render, na końcu */
 void fx_output_fini(struct output *o);
 void sfx_typing(const char *text, int ms);              /* stukot klawiszy do powiadomienia */

@@ -150,6 +150,9 @@ const struct theme themes[] = {
 	},
 };
 const int nthemes = sizeof themes / sizeof themes[0];
+/* Napisy na kaflach wygaszacza: każdy nowy kafel dostaje kolejne słowo.
+ * Pierwsza litera słów dłuższych niż 2 znaki w kolorze akcentu — tu składa się z nich NORNS. */
+const char *const saver_words[] = { "Not", "Only", "a", "River's", "Next", "Sloppy", "WM", NULL };
 #define ZEN_THEME "grafit"          /* Super+Z przełącza też na ten motyw (NULL = bez zmiany) */
 
 /* ---------- programy ---------- */
