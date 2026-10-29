@@ -197,6 +197,8 @@ extern const char *const saver_words[];                 /* config.h */
 pixman_image_t *urd_word_image(const char *s);          /* słowo dużym fontem motywu (cache) */
 void fx_render(void);                                   /* w sekwencji render, na końcu */
 void fx_output_fini(struct output *o);
+void fx_window_closed(struct win *w);                     /* duszek zamykanego okna */
+bool fx_ghosts_busy(void);
 void sfx_typing(const char *text, int ms);              /* stukot klawiszy do powiadomienia */
 void sfx_drop(bool up);                                 /* serwo terminala wysuwanego */
 const char *sfx_path(const char *name);                 /* ścieżka wygenerowanego dźwięku */

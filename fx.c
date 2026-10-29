@@ -1,7 +1,7 @@
 // fx — warstwa efektów nad całym ekranem: powierzchnia norns na samej górze,
 // przepuszcza kliknięcia, rysowana w fizycznej rozdzielczości monitora.
-// Efekty: linie kineskopu (Super+Ctrl+A, norns-ctl crt) i wygaszacz
-// z kafli BSP (norns-ctl saver).
+// Efekty: linie kineskopu (Super+Ctrl+A, norns-ctl crt), wygaszacz
+// z kafli BSP (norns-ctl saver) i gasnący kineskop przy zamykaniu okna.
 // Tu jest miejsce na kolejne — każdy dostaje własną powierzchnię w struct output
 // i swoją funkcję wołaną z fx_render().
 #define _GNU_SOURCE
@@ -430,6 +430,115 @@ void fx_set_saver(bool on)
 	river_window_manager_v1_manage_dirty(wm);
 }
 
+/* ---------- zamykanie okna: gasnący kineskop ---------- */
+
+/* River niszczy zamknięte okno od razu, więc w jego miejscu rysujemy duszka:
+ * prostokąt w kolorze dim zgniata się do poziomej kreski, a kreska w kolorze
+ * ramki zwija się do kropki — odwrotność otwierania z anim.c. Bufor 1×1
+ * rozciągany przez viewporter, więc klatka to tylko pozycja i rozmiar. */
+#define CLOSE_MS   240              /* cały efekt */
+#define CLOSE_LINE 0.55             /* ta część czasu na zgniatanie do kreski */
+#define GHOSTS     8
+
+static struct ghost {
+	struct fx *f;
+	struct buf *b;
+	uint64_t t0;                    /* 0 = jeszcze nie pokazany */
+	int x, y, w, h;
+	uint32_t body, line;
+	bool lit;                       /* już w fazie kreski */
+} ghosts[GHOSTS];
+
+static void ghost_free(struct ghost *g)
+{
+	buf_drop(g->b);
+	fx_free(&g->f);
+	memset(g, 0, sizeof *g);
+}
+
+static void ghost_color(struct ghost *g, uint32_t rgb)
+{
+	buf_drop(g->b);
+	g->b = buf_new(1, 1, false, true);
+	if (g->b) {
+		*(uint32_t *)g->b->data = 0xff000000u | rgb;
+		buf_attach(g->b, g->f->wl);
+		wl_surface_damage_buffer(g->f->wl, 0, 0, 1, 1);
+	}
+}
+
+/* Z win_closed, zanim okno zniknie (ma jeszcze pozycję i rozmiar). */
+void fx_window_closed(struct win *w)
+{
+	if (!anim_on || !viewporter || !w->shown || !win_visible(w) || w->drop)
+		return;
+	int ww = w->dw > 0 ? w->dw : w->w, wh = w->dh > 0 ? w->dh : w->h;
+	if (ww <= 0 || wh <= 0)
+		return;
+	for (int i = 0; i < GHOSTS; i++) {
+		struct ghost *g = &ghosts[i];
+		if (g->f || g->t0)
+			continue;
+		g->x = w->bx - BORDER;
+		g->y = w->by - BORDER;
+		g->w = ww + 2 * BORDER;
+		g->h = wh + 2 * BORDER;
+		g->body = THEME->dim;
+		g->line = w == focused ? THEME->focus : THEME->unfocus;
+		g->f = fx_new(1, 1, false);
+		ghost_color(g, g->body);
+		return;
+	}
+}
+
+bool fx_ghosts_busy(void)
+{
+	for (int i = 0; i < GHOSTS; i++)
+		if (ghosts[i].f)
+			return true;
+	return false;
+}
+
+static void ghosts_render(uint64_t now)
+{
+	for (int i = 0; i < GHOSTS; i++) {
+		struct ghost *g = &ghosts[i];
+		if (!g->f)
+			continue;
+		if (!g->t0)
+			g->t0 = now;
+		double p = (double)(now - g->t0) / CLOSE_MS;
+		if (p >= 1.0) {
+			ghost_free(g);
+			continue;
+		}
+		int w, h;
+		if (p < CLOSE_LINE) {               /* obraz zgniata się do kreski */
+			double e = p / CLOSE_LINE;
+			e = e * e;                      /* powolny start, szybki koniec */
+			w = (int)(g->w * (1.0 - 0.3 * e));
+			h = (int)(g->h * (1.0 - e));
+		} else {                            /* kreska zwija się do kropki */
+			if (!g->lit) {
+				g->lit = true;
+				ghost_color(g, g->line);
+			}
+			double e = (p - CLOSE_LINE) / (1.0 - CLOSE_LINE);
+			w = (int)(g->w * 0.7 * (1.0 - e));
+			h = 2;
+		}
+		if (w < 2)
+			w = 2;
+		if (h < 2)
+			h = 2;
+		wp_viewport_set_destination(g->f->vp, w, h);
+		river_shell_surface_v1_sync_next_commit(g->f->ss);
+		wl_surface_commit(g->f->wl);
+		river_node_v1_set_position(g->f->node, g->x + (g->w - w) / 2, g->y + (g->h - h) / 2);
+		river_node_v1_place_top(g->f->node);
+	}
+}
+
 void fx_output_fini(struct output *o)
 {
 	fx_free(&o->crt);
@@ -441,6 +550,7 @@ void fx_output_fini(struct output *o)
 void fx_render(void)
 {
 	saver_render();
+	ghosts_render(now_ms());
 	crt_render();
 }
 

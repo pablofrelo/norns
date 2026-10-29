@@ -16,7 +16,7 @@ commitów są po polsku, README po angielsku.
 | `deco.c` | poświata / cień wokół okien (4 paski dekoracji) |
 | `tray.c` | zasobnik: StatusNotifierWatcher/Host po sd-bus, ikony (pixmapy, PNG), dbusmenu |
 | `verdandi.c` | demon powiadomień `org.freedesktop.Notifications` (treść; rysuje urd.c) |
-| `fx.c` | warstwa efektów nad ekranem: linie kineskopu i wygaszacz z kafli BSP (własny budzik w `main()`, rysuje poza sekwencjami) — miejsce na kolejne efekty |
+| `fx.c` | warstwa efektów nad ekranem: linie kineskopu, wygaszacz z kafli BSP i gasnący kineskop przy zamykaniu okna (własny budzik w `main()`, rysuje poza sekwencjami) — miejsce na kolejne efekty |
 | `sfx.c` | dźwięki generowane w C (serwo terminala, migawka, stukot klawiszy), odtwarzane przez `pw-play` |
 | `sensors.c` | CPU, RAM, temperatura, bateria, sieć, głośność (co 2 s) |
 | `shm.c` | bufory `wl_shm` (`buf_new/attach/drop`, jednorazowe i wielokrotne) |

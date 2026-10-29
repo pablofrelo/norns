@@ -1028,6 +1028,7 @@ static void run(const struct key *k)
 static void win_closed(void *data, struct river_window_v1 *rw)
 {
 	struct win *w = data;
+	fx_window_closed(w);                /* przed zmianą fokusu: kolor ramki */
 	if (w == drop_win)
 		drop_win = NULL;
 	if (w->leaf) {

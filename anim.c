@@ -58,7 +58,7 @@ bool anim_busy(uint64_t now)
 	wl_list_for_each(o, &outputs, link)
 		if (sliding(o, now))
 			return true;
-	if (notify_busy(now))
+	if (notify_busy(now) || fx_ghosts_busy())
 		return true;
 	struct win *w;
 	wl_list_for_each(w, &windows, link)
