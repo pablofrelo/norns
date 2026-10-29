@@ -42,9 +42,10 @@ and used daily on my own machine.
 - zen mode (Super+Z, on every monitor at once): the GRAFIT theme, no bar, gaps, borders or glow;
   notifications wait until you leave zen and norns' own sounds go quiet —
   the keyboard works as usual
-- screen saver built in: BSP tiles that keep splitting in half and folding back,
-  the way norns lays out windows, in the colours of the current theme, each tile
-  labelled with the next word of the motto (`saver_words` in `config.h`)
+- screen saver built in: the motto builds itself on every monitor — N.O.R.N.S.
+  fills the screen, then each next word splits the previous word's tile the way
+  norns splits windows, and after a pause it all folds back (`saver_words` in
+  `config.h`), in the colours of the current theme
   (`norns-ctl saver`; mouse movement, a click or any norns key wakes it)
 - MU/TH/UR: green glow around the focused window, twinkling stars, a comet now
   and then; Super+A turns all motion off

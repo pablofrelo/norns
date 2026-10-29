@@ -130,15 +130,18 @@ static void crt_render(void)
 
 /* ---------- wygaszacz: kafle BSP ---------- */
 
-/* Ekran to jeden kafel. Co SAVER_STEP_MS losowy kafel dzieli się na pół wzdłuż
- * dłuższego boku (jak nowe okno w norns) albo para sąsiednich liści zwija się
- * z powrotem w jeden. Kolory z motywu, najnowszy kafel z przygaszoną ramką (dim).
+/* Ekran to jeden kafel z pierwszym słowem (N.O.R.N.S.). Co SAVER_STEP_MS kafel
+ * ostatniego słowa dzieli się (jak nowe okno w norns) i nowa część dostaje
+ * następne słowo; po całym zdaniu chwila przerwy i zwijanie wstecz. Losowe są:
+ * kierunek podziału (czasem krótszy bok), strona nowego słowa, proporcja (50–62%
+ * dla nowego) i długość przerw. Kolory z motywu, kafel ostatniego słowa z ramką dim.
  * Włącza norns-ctl saver (np. ze swayidle); budzi ruch myszy, klik, skrót norns. */
 
 bool saver_on;
 uint64_t saver_since;
 
 #define SV_NODES (2 * SAVER_MAX + 2)
+enum { SV_GROW, SV_HOLD, SV_FOLD, SV_REST };
 
 struct snode {
 	int a, b;                       /* dzieci; a < 0 — liść */
@@ -153,8 +156,9 @@ struct saver {
 	struct fx *f;
 	struct snode n[SV_NODES];
 	bool used[SV_NODES];
-	int newest;                     /* kafel z wyróżnioną ramką */
-	int next_word;                  /* słowo dla następnego nowego kafla */
+	int newest;                     /* kafel z ostatnim słowem (wyróżniona ramka) */
+	int chain[SV_NODES], depth;     /* kolejne podziały — do zwijania wstecz */
+	int phase, wait;                /* SV_GROW / SV_HOLD / SV_FOLD; ile kroków przerwy */
 	uint64_t next;                  /* następny krok */
 	bool dirty;
 };
@@ -261,7 +265,8 @@ static bool sv_draw(struct saver *s, int i, pixman_image_t *img, int x, int y, i
 	return m;
 }
 
-/* Kolejny krok: kończy zwijanie, potem (co SAVER_STEP_MS) dzieli albo zwija. */
+/* Kolejny krok: kończy zwijanie, potem (co SAVER_STEP_MS) zdanie rośnie słowo po
+ * słowie — dzielimy kafel ostatniego słowa — a po przerwie zwija się wstecz. */
 static void sv_step(struct saver *s, uint64_t now, int minpx)
 {
 	for (int i = 0; i < SV_NODES; i++) {
@@ -271,7 +276,6 @@ static void sv_step(struct saver *s, uint64_t now, int minpx)
 			s->used[n->a] = s->used[n->b] = false;
 			n->a = -1;
 			n->closing = false;
-			s->newest = i;
 			s->dirty = true;
 		}
 	}
@@ -279,44 +283,56 @@ static void sv_step(struct saver *s, uint64_t now, int minpx)
 		return;
 	s->next = now + SAVER_STEP_MS;
 
-	int leaves = 0, split[SV_NODES], ns = 0, fold[SV_NODES], nf = 0;
-	for (int i = 0; i < SV_NODES; i++) {
-		struct snode *n = &s->n[i];
-		if (!s->used[i])
-			continue;
-		if (n->a < 0) {
-			leaves++;
-			if (n->w >= 2 * minpx || n->h >= 2 * minpx)
-				split[ns++] = i;
-		} else if (!n->closing && !sv_moving(n, now) && s->n[n->a].a < 0 && s->n[n->b].a < 0) {
-			fold[nf++] = i;
-		}
-	}
-	bool grow = ns && (!nf || leaves < 3 || (leaves < SAVER_MAX && rand() % 3));
-	if (grow) {
-		int i = split[rand() % ns], a = sv_alloc(s), b = a < 0 ? -1 : sv_alloc(s);
-		if (b < 0) {
-			if (a >= 0)
-				s->used[a] = false;
+	int words = 0;
+	while (saver_words[words])
+		words++;
+	struct snode *tip = &s->n[s->newest];
+
+	if (s->phase == SV_GROW) {
+		/* dłuższy bok, czasem — dla odmiany — krótszy, jeśli połówki się zmieszczą */
+		bool sbs = tip->w >= tip->h;
+		if (rand() % 4 == 0 && (sbs ? tip->h : tip->w) >= 2 * minpx)
+			sbs = !sbs;
+		bool room = (sbs ? tip->w : tip->h) >= 2 * minpx;
+		int a = -1, b = -1;
+		if (room && tip->word + 1 < words && (a = sv_alloc(s)) >= 0 && (b = sv_alloc(s)) < 0)
+			s->used[a] = false;
+		if (b < 0) {                            /* całe zdanie (albo brak miejsca) */
+			s->phase = SV_HOLD;
+			s->wait = 2 + rand() % 3;
 			return;
 		}
+		int i = s->newest;
+		bool first = rand() % 2;                /* nowe słowo z lewej/góry albo z prawej/dołu */
+		float share = 0.5f + (rand() % 13) / 100.0f;   /* nowe dostaje 50–62% */
+		tip->a = a;
+		tip->b = b;
+		tip->sbs = sbs;
+		tip->from = first ? 0 : 1;              /* nowy kafel wjeżdża od zera */
+		tip->to = first ? share : 1 - share;
+		tip->t0 = now;
+		int nw = first ? a : b, old = first ? b : a;
+		s->n[old].word = tip->word;
+		s->n[nw].word = tip->word + 1;
+		s->chain[s->depth++] = i;
+		s->newest = nw;
+	} else if (s->phase == SV_HOLD || s->phase == SV_REST) {
+		if (--s->wait <= 0)
+			s->phase = s->phase == SV_HOLD ? SV_FOLD : SV_GROW;
+		return;
+	} else if (s->depth > 0) {                  /* SV_FOLD: ostatni podział wraca */
+		int i = s->chain[--s->depth];
 		struct snode *n = &s->n[i];
-		n->a = a;
-		n->b = b;
-		n->sbs = n->w >= n->h;
-		n->from = 1;                /* nowy kafel wjeżdża od prawej / od dołu */
-		n->to = 0.5f;
-		n->t0 = now;
-		s->n[a].word = n->word;     /* stary kafel zostaje przy swoim słowie */
-		s->n[b].word = s->next_word++;
-		s->newest = b;
-	} else if (nf) {
-		struct snode *n = &s->n[fold[rand() % nf]];
+		bool keep_a = n->b == s->newest;        /* zostaje starsze słowo */
 		n->closing = true;
 		n->from = n->to;
-		n->to = rand() % 2 ? 1 : 0;   /* jedno dziecko zjada drugie */
+		n->to = keep_a ? 1 : 0;
 		n->t0 = now;
-		s->newest = n->to > 0.5f ? n->a : n->b;
+		s->newest = i;
+	} else {
+		s->phase = SV_REST;                     /* znów samo N.O.R.N.S. */
+		s->wait = 1 + rand() % 2;
+		return;
 	}
 	s->dirty = true;
 }
@@ -372,7 +388,6 @@ static void saver_render(void)
 			s->f = fx_new(bw, bh, true);                    /* kliki trafiają w wygaszacz */
 			s->used[0] = true;
 			s->n[0].a = -1;
-			s->next_word = 1;           /* kafel 0 ma słowo 0 */
 			s->next = now_ms() + SAVER_STEP_MS / 2;
 			s->dirty = sv_paint(o, now_ms(), true);
 		}

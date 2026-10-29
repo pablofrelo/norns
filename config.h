@@ -23,10 +23,10 @@
 #define NOTE_MS       6000          /* jak długo wisi zwykłe powiadomienie */
 #define NOTE_CHAR_MS  40            /* tempo „pisania” tekstu (ms na znak) */
 #define NOTE_TYPE_MAX 3500          /* ale całość najwyżej tyle ms */
-#define SAVER_STEP_MS 1500          /* wygaszacz: co tyle kafel się dzieli albo zwija */
+#define SAVER_STEP_MS 1500          /* wygaszacz: co tyle kolejny podział albo zwinięcie */
 #define SAVER_MS      400           /* ruch podziału */
-#define SAVER_MAX     12            /* najwyżej tyle kafli na monitorze */
-#define SAVER_MIN     200           /* dzielimy tylko kafle od tylu logicznych px */
+#define SAVER_MAX     12            /* najwyżej tyle słów (kafli) na monitorze */
+#define SAVER_MIN     80            /* kafel dzielimy tylko, gdy połówki mają co najmniej tyle logicznych px */
 
 #endif /* NORNS_CONFIG_CONSTS */
 
@@ -150,9 +150,12 @@ const struct theme themes[] = {
 	},
 };
 const int nthemes = sizeof themes / sizeof themes[0];
-/* Napisy na kaflach wygaszacza: każdy nowy kafel dostaje kolejne słowo, które
- * wypełnia kafel (w pionowym — obrócone). Pierwsza litera w kolorze dim, reszta line. */
-const char *const saver_words[] = { "Not", "Only", "a", "River's", "Next", "Sloppy", "WM", NULL };
+/* Napisy wygaszacza: pierwsze słowo wypełnia cały ekran, każde następne powstaje
+ * z podziału kafla poprzedniego; po całym zdaniu chwila przerwy i zwijanie wstecz.
+ * Słowo wypełnia kafel (w pionowym — obrócone); pierwsza litera dim, reszta line. */
+const char *const saver_words[] = {
+	"N.O.R.N.S.", "Not", "Only", "a", "River's", "Next", "Sloppy", "WM", NULL
+};
 #define ZEN_THEME "grafit"          /* Super+Z przełącza też na ten motyw (NULL = bez zmiany) */
 
 /* ---------- programy ---------- */
