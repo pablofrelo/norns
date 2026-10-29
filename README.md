@@ -1,5 +1,7 @@
 # norns
 
+*Not Only a River's Next Sloppy WM*
+
 A BSP window manager for the [river](https://codeberg.org/river/river) Wayland
 compositor (river-window-management-v1), with its own bar, **urd**.
 
