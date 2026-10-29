@@ -433,11 +433,13 @@ void fx_set_saver(bool on)
 /* ---------- zamykanie okna: gasnący kineskop ---------- */
 
 /* River niszczy zamknięte okno od razu, więc w jego miejscu rysujemy duszka:
- * prostokąt w kolorze dim zgniata się do poziomej kreski, a kreska w kolorze
+ * półprzezroczysty cień w kolorze tła zgniata się do poziomej kreski, a kreska w kolorze
  * ramki zwija się do kropki — odwrotność otwierania z anim.c. Bufor 1×1
  * rozciągany przez viewporter, więc klatka to tylko pozycja i rozmiar. */
 #define CLOSE_MS   240              /* cały efekt */
 #define CLOSE_LINE 0.55             /* ta część czasu na zgniatanie do kreski */
+#define CLOSE_BODY 0.45f            /* krycie gasnącego obrazu (kolor tła) */
+#define CLOSE_GLOW 0.55f            /* krycie kreski (kolor ramki) */
 #define GHOSTS     8
 
 static struct ghost {
@@ -456,12 +458,14 @@ static void ghost_free(struct ghost *g)
 	memset(g, 0, sizeof *g);
 }
 
-static void ghost_color(struct ghost *g, uint32_t rgb)
+static void ghost_color(struct ghost *g, uint32_t rgb, float a)
 {
 	buf_drop(g->b);
-	g->b = buf_new(1, 1, false, true);
+	g->b = buf_new(1, 1, true, true);
 	if (g->b) {
-		*(uint32_t *)g->b->data = 0xff000000u | rgb;
+		uint32_t a8 = (uint32_t)(a * 255), r = (rgb >> 16 & 0xff) * a8 / 255,
+		         gr = (rgb >> 8 & 0xff) * a8 / 255, b = (rgb & 0xff) * a8 / 255;
+		*(uint32_t *)g->b->data = a8 << 24 | r << 16 | gr << 8 | b;   /* premultiplied */
 		buf_attach(g->b, g->f->wl);
 		wl_surface_damage_buffer(g->f->wl, 0, 0, 1, 1);
 	}
@@ -483,10 +487,10 @@ void fx_window_closed(struct win *w)
 		g->y = w->by - BORDER;
 		g->w = ww + 2 * BORDER;
 		g->h = wh + 2 * BORDER;
-		g->body = THEME->dim;
+		g->body = THEME->bg;
 		g->line = w == focused ? THEME->focus : THEME->unfocus;
 		g->f = fx_new(1, 1, false);
-		ghost_color(g, g->body);
+		ghost_color(g, g->body, CLOSE_BODY);
 		return;
 	}
 }
@@ -521,7 +525,7 @@ static void ghosts_render(uint64_t now)
 		} else {                            /* kreska zwija się do kropki */
 			if (!g->lit) {
 				g->lit = true;
-				ghost_color(g, g->line);
+				ghost_color(g, g->line, CLOSE_GLOW);
 			}
 			double e = (p - CLOSE_LINE) / (1.0 - CLOSE_LINE);
 			w = (int)(g->w * 0.7 * (1.0 - e));
