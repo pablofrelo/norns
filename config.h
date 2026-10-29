@@ -62,7 +62,7 @@ static const char *const term_grafit[] = {
 };
 static const char *const term_papier[] = {
 	"foot", "-o", "main.initial-color-theme=dark",
-	"-o", "colors-dark.background=ece6da", "-o", "colors-dark.foreground=3b3833", NULL
+	"-o", "colors-dark.background=d8c9aa", "-o", "colors-dark.foreground=3e342a", NULL
 };
 static const char *const run_grafit[] = {
 	"fuzzel", "--font=JetBrainsMono Nerd Font:size=11", "--border-radius=0", "--border-width=2",
@@ -71,8 +71,8 @@ static const char *const run_grafit[] = {
 };
 static const char *const run_papier[] = {
 	"fuzzel", "--font=JetBrainsMono Nerd Font:size=11", "--border-radius=0", "--border-width=2",
-	"--background=ece6daf0", "--text-color=3b3833ff", "--match-color=5f7f78ff",
-	"--selection-color=cfc7b8ff", "--selection-text-color=3b3833ff", "--border-color=8fa6a0ff", NULL
+	"--background=d8c9aaf0", "--text-color=3e342aff", "--match-color=5f7049ff",
+	"--selection-color=b8a47eff", "--selection-text-color=3e342aff", "--border-color=8a7556ff", NULL
 };
 
 /* Blokada ekranu (Super+Shift+L, wyłącznik, norns-ctl lock). Domyślnie swaylock
@@ -103,11 +103,11 @@ static const char *const lock_grafit[] = {
 	"--text-wrong-color", "b0675f", NULL
 };
 static const char *const lock_papier[] = {
-	"swaylock", "-f", "-c", "e4ddd0", "--font", "JetBrainsMono Nerd Font",
-	"--inside-color", "ece6da", "--ring-color", "cfc7b8", "--line-color", "00000000",
-	"--separator-color", "00000000", "--key-hl-color", "5f7f78", "--bs-hl-color", "a07a3a",
-	"--text-color", "3b3833", "--inside-ver-color", "ece6da", "--ring-ver-color", "5f7f78",
-	"--text-ver-color", "5f7f78", "--inside-wrong-color", "ece6da", "--ring-wrong-color", "a8524a",
+	"swaylock", "-f", "-c", "cdbc9a", "--font", "JetBrainsMono Nerd Font",
+	"--inside-color", "d8c9aa", "--ring-color", "b8a47e", "--line-color", "00000000",
+	"--separator-color", "00000000", "--key-hl-color", "5f7049", "--bs-hl-color", "a07a3a",
+	"--text-color", "3e342a", "--inside-ver-color", "d8c9aa", "--ring-ver-color", "5f7049",
+	"--text-ver-color", "5f7049", "--inside-wrong-color", "d8c9aa", "--ring-wrong-color", "a8524a",
 	"--text-wrong-color", "a8524a", NULL
 };
 
@@ -143,10 +143,10 @@ const struct theme themes[] = {
 		.name = "papier", .label = "PAPIER",
 		.font = "JetBrainsMono Nerd Font:pixelsize=14",
 		.term = term_papier, .run = run_papier, .lock = lock_papier,
-		.bg = 0xece6da, .line = 0xcfc7b8, .dim = 0x8a8478, .fg = 0x3b3833,
-		.accent = 0x5f7f78, .warn = 0xa07a3a, .alarm = 0xa8524a,
-		.focus = 0x8fa6a0, .unfocus = 0xd8d1c4,
-		.wall = 0xe4ddd0, .dot = 0xd6cebf, .look = LOOK_PLAIN,
+		.bg = 0xd8c9aa, .line = 0xb8a47e, .dim = 0x7a6a52, .fg = 0x3e342a,
+		.accent = 0x5f7049, .warn = 0xa07a3a, .alarm = 0xa8524a,
+		.focus = 0x8a7556, .unfocus = 0xc6b592,
+		.wall = 0xcdbc9a, .dot = 0xc4b290, .look = LOOK_PLAIN,
 	},
 };
 const int nthemes = sizeof themes / sizeof themes[0];
