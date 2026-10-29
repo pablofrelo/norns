@@ -155,7 +155,6 @@ struct saver {
 	bool used[SV_NODES];
 	int newest;                     /* kafel z wyróżnioną ramką */
 	int next_word;                  /* słowo dla następnego nowego kafla */
-	int sc;                         /* skala monitora * 120 */
 	uint64_t next;                  /* następny krok */
 	bool dirty;
 };
@@ -202,26 +201,35 @@ static int sv_alloc(struct saver *s)
 	return -1;
 }
 
-/* Napis w lewym górnym rogu kafla: pierwsza litera w akcencie (słowa > 2 znaków). */
-static void sv_word(struct saver *s, const struct snode *n, pixman_image_t *img, int x, int y, int w, int h)
+/* Słowo wypełnia kafel: skalowane do kafla, w pionowym kaflu obrócone
+ * (czyta się od dołu do góry). Duży font motywu rysuje urd. */
+static void sv_word(const struct snode *n, pixman_image_t *img, int x, int y, int w, int h)
 {
 	int cnt = 0;
 	while (saver_words[cnt])
 		cnt++;
-	if (!cnt)
+	pixman_image_t *src = cnt ? urd_word_image(saver_words[n->word % cnt]) : NULL;
+	if (!src)
 		return;
-	const char *wd = saver_words[n->word % cnt];
-	int pad = 8 * s->sc / 120, th = urd_text_height(s->sc), max_x = x + w - pad;
-	if (h < th + 2 * pad || w < 3 * pad)
+	int W = pixman_image_get_width(src), H = pixman_image_get_height(src);
+	int pad = (w < h ? w : h) / 10;
+	int iw = w - 2 * pad, ih = h - 2 * pad;
+	if (iw < 8 || ih < 8)
 		return;
-	char first[8] = { 0 };
-	int k = 1;
-	while (wd[k] && (wd[k] & 0xc0) == 0x80 && k < 4)   /* pierwszy znak UTF-8 */
-		k++;
-	memcpy(first, wd, k);
-	bool lit = strlen(wd) > 2;
-	int tx = urd_text(img, x + pad, y + pad, s->sc, max_x, first, lit ? THEME->accent : THEME->dim);
-	urd_text(img, tx, y + pad, s->sc, max_x, wd + k, THEME->dim);
+	bool vert = ih > iw;
+	double L = vert ? ih : iw, S = vert ? iw : ih;
+	double k = L / W < S / H ? L / W : S / H;
+	int dw = (int)((vert ? H : W) * k), dh = (int)((vert ? W : H) * k);
+	struct pixman_f_transform ft = { { { 1 / k, 0, 0 }, { 0, 1 / k, 0 }, { 0, 0, 1 } } };
+	if (vert)                       /* obrót o 90° w lewo: początek słowa na dole */
+		ft = (struct pixman_f_transform){ { { 0, -1 / k, W }, { 1 / k, 0, 0 }, { 0, 0, 1 } } };
+	pixman_transform_t t;
+	pixman_transform_from_pixman_f_transform(&t, &ft);
+	pixman_image_set_transform(src, &t);
+	pixman_image_set_filter(src, H < 100 ? PIXMAN_FILTER_NEAREST : PIXMAN_FILTER_BILINEAR, NULL, 0);
+	pixman_image_composite32(PIXMAN_OP_OVER, src, NULL, img, 0, 0, 0, 0,
+	                         x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+	pixman_image_set_transform(src, NULL);
 }
 
 /* Rysuje drzewo od węzła i; g — przerwa, bd — ramka (piksele bufora). */
@@ -235,7 +243,7 @@ static bool sv_draw(struct saver *s, int i, pixman_image_t *img, int x, int y, i
 		if (w > 2 * (g + bd) && h > 2 * (g + bd)) {
 			box(img, x + g, y + g, w - 2 * g, h - 2 * g, i == s->newest ? THEME->dim : THEME->unfocus);
 			box(img, x + g + bd, y + g + bd, w - 2 * (g + bd), h - 2 * (g + bd), THEME->bg);
-			sv_word(s, n, img, x + g + bd, y + g + bd, w - 2 * (g + bd), h - 2 * (g + bd));
+			sv_word(n, img, x + g + bd, y + g + bd, w - 2 * (g + bd), h - 2 * (g + bd));
 		}
 		return false;
 	}
@@ -335,7 +343,6 @@ static bool sv_paint(struct output *o, uint64_t now, bool sync)
 	struct buf *b = *slot;
 	int sc = o->bar.vp && o->bar.scale120 ? o->bar.scale120 : 120;
 	int g = GAP * sc / 240, bd = BORDER * sc / 120 > 0 ? BORDER * sc / 120 : 1;
-	s->sc = sc;
 	box(b->img, 0, 0, b->w, b->h, THEME->wall);
 	bool m = sv_draw(s, 0, b->img, g, g, b->w - 2 * g, b->h - 2 * g, g, bd, now);
 	if (sync)

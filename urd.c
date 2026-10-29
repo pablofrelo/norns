@@ -137,20 +137,61 @@ static int text(pixman_image_t *img, int x, int top, int h, int max_x, const cha
 	return x;
 }
 
-/* Tekst fontem motywu w danej skali — dla innych powierzchni (wygaszacz w fx.c). */
-int urd_text(pixman_image_t *img, int x, int top, int scale120, int max_x, const char *s, uint32_t rgb)
+/* Słowo dużym fontem motywu, przezroczyste tło — dla wygaszacza (fx.c skaluje
+ * i obraca). Pierwsza litera w kolorze dim, reszta line. Cache na motyw i słowo. */
+#define WORD_PX 160
+pixman_image_t *urd_word_image(const char *s)
 {
-	struct fcft_font *keep = font;
-	font = font_at(scale120);
-	x = text(img, x, top, font->ascent + font->descent, max_x, s, rgb);
-	font = keep;
-	return x;
-}
-
-int urd_text_height(int scale120)
-{
-	struct fcft_font *f = font_at(scale120);
-	return f->ascent + f->descent;
+	static struct fcft_font *big[8];
+	static struct { int theme; const char *s; pixman_image_t *img; } cache[16];
+	static int next;
+	for (int i = 0; i < 16; i++)
+		if (cache[i].img && cache[i].theme == theme_idx && cache[i].s == s)
+			return cache[i].img;
+	if (theme_idx >= 8)
+		return NULL;
+	if (!big[theme_idx]) {
+		char name[160];
+		const char *pat = THEME->font, *ps = strstr(pat, "pixelsize=");
+		if (ps)
+			snprintf(name, sizeof name, "%.*spixelsize=%d", (int)(ps - pat), pat, WORD_PX);
+		else
+			snprintf(name, sizeof name, "%s:pixelsize=%d", pat, WORD_PX);
+		const char *names[] = { name, "monospace" };
+		if (!(big[theme_idx] = fcft_from_name(2, names, NULL)))
+			return NULL;
+	}
+	struct fcft_font *f = big[theme_idx];
+	int w = 0, h = f->ascent + f->descent;
+	for (const char *p = s; *p;) {
+		const struct fcft_glyph *g = fcft_rasterize_char_utf32(f, next_cp(&p), FCFT_SUBPIXEL_NONE);
+		if (g)
+			w += g->advance.x;
+	}
+	if (w <= 0 || h <= 0)
+		return NULL;
+	pixman_image_t *img = pixman_image_create_bits(PIXMAN_a8r8g8b8, w, h, NULL, 0);   /* wyzerowany */
+	pixman_color_t c1 = pc(THEME->dim), c2 = pc(THEME->line);
+	pixman_image_t *f1 = pixman_image_create_solid_fill(&c1), *f2 = pixman_image_create_solid_fill(&c2);
+	int x = 0;
+	for (const char *p = s; *p;) {
+		bool first = p == s;
+		const struct fcft_glyph *g = fcft_rasterize_char_utf32(f, next_cp(&p), FCFT_SUBPIXEL_NONE);
+		if (!g)
+			continue;
+		pixman_image_composite32(PIXMAN_OP_OVER, first ? f1 : f2, g->pix, img,
+		                         0, 0, 0, 0, x + g->x, f->ascent - g->y, g->width, g->height);
+		x += g->advance.x;
+	}
+	pixman_image_unref(f1);
+	pixman_image_unref(f2);
+	if (cache[next].img)
+		pixman_image_unref(cache[next].img);
+	cache[next].theme = theme_idx;
+	cache[next].s = s;
+	cache[next].img = img;
+	next = (next + 1) % 16;
+	return img;
 }
 
 int urd_bar_height(void)
