@@ -162,10 +162,6 @@ const char *const saver_words[] = {
 
 static const char *const browser[] = { "firefox", NULL };
 static const char *const files[] = { "dolphin", NULL };
-/* HADLEY: włącza, a gdy już działa — wyłącza (po nazwie procesu, nie po linii poleceń,
- * żeby pgrep nie złapał samego sh) */
-static const char *const hadley[] = { "/bin/sh", "-c",
-	"if pgrep -x hadley >/dev/null; then pkill -x hadley; else exec \"$HOME/.local/bin/hadley\"; fi", NULL };
 static const char *const vol_up[] = { "wpctl", "set-volume", "-l", "1.0", "@DEFAULT_AUDIO_SINK@", "5%+", NULL };
 static const char *const vol_down[] = { "wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-", NULL };
 static const char *const vol_mute[] = { "wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle", NULL };
@@ -191,8 +187,6 @@ static const struct key keys[] = {
 	{ SUPER,        XKB_KEY_d,      SPAWN,     1, NULL },  /* 1 = uruchamianie programów motywu */
 	{ SUPER,        XKB_KEY_b,      SPAWN,     0, browser },
 	{ SUPER,        XKB_KEY_e,      SPAWN,     0, files },
-	{ SUPER | SHIFT, XKB_KEY_h,     SPAWN,     0, hadley },  /* h i H: zależnie od tego, */
-	{ SUPER | SHIFT, XKB_KEY_H,     SPAWN,     0, hadley },  /* jak river poda Shift */
 	{ SUPER,        XKB_KEY_q,      CLOSE,     0, NULL },
 	{ SUPER,        XKB_KEY_Escape, QUIT,      0, NULL },  /* wyjście z norns, nie z rivera */
 	{ SUPER | SHIFT, XKB_KEY_Escape, POWER_MENU, 0, NULL }, /* zablokuj / wyloguj / restart / wyłącz */
@@ -230,7 +224,6 @@ static const char *const help_lines[] = {
 	"Super+`               terminal wysuwany od dołu (to samo chowa)",
 	"Super+D               uruchom program",
 	"Super+B / E           przeglądarka / pliki",
-	"Super+Shift+H         HADLEY (kamery) wł./wył.",
 	"Super+Q               zamknij okno",
 	"Super+H J K L         fokus w lewo/dół/górę/prawo (też między monitorami)",
 	"Super+Ctrl+H J K L    zamień okno z sąsiadem",
@@ -263,9 +256,7 @@ static const char *const help_lines[] = {
  * nie zmienia, nazwy DP-n potrafią. tag: 1–9, 0 = aktualnie widoczny.
  * Gdy monitora nie ma, okno ląduje normalnie, pod kursorem. */
 static const struct rule rules[] = {
-	{ "firefox", "1O0R9HA001785", 0 },     /* lewy AOC */
-	{ "foot",    "1O0R9HA001780", 0 },     /* prawy AOC */
-	{ "Beeper",  "0x41A0", 0 },            /* laptop */
+	/* { "firefox", "1O0R9HA001785", 0 },     przykład: firefox na monitorze o tym numerze seryjnym */
 };
 #define NRULES (sizeof rules / sizeof rules[0])
 
@@ -273,9 +264,7 @@ static const struct rule rules[] = {
  * opisu jak w rules[]). "~/" to katalog domowy. Obraz wypełnia cały ekran,
  * nadmiar przycięty. Monitor bez wpisu dostaje tapetę motywu. */
 static const struct wallpaper wallpapers[] = {
-	{ "gruvbox", "1O0R9HA001785", "~/Pictures/Wallpapers/ygg_0.png" },     /* lewy AOC */
-	{ "gruvbox", "1O0R9HA001780", "~/Pictures/Wallpapers/ygg_1.png" },     /* prawy AOC */
-	{ "gruvbox", "0x41A0",        "~/Pictures/Wallpapers/Ripley_1.png" },  /* laptop */
+	/* { "gruvbox", "1O0R9HA001785", "~/Pictures/Wallpapers/lewy.png" },     przykład */
 };
 
 /* Okna, które zawsze pływają (np. wybór pliku z portalu, który nie podaje rodzica). */

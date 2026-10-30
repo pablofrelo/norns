@@ -131,10 +131,12 @@ Scripts and other programs can drive norns over D-Bus (installed with
 
 ## Configuration
 
-Everything lives in `config.h`: gaps, borders, animation times, the themes
+Everything lives in `config.h`, created from `config.def.h` on the first
+`make` and never overwritten after that: gaps, borders, animation times, the themes
 (and which one zen switches to, `ZEN_THEME`),
-programs, keys, application rules and windows that always float. Rebuild after
-editing.
+programs, keys, application rules, wallpapers and windows that always float.
+Rebuild after editing. `config.h` is not tracked by git, so your changes stay
+yours; compare it with `config.def.h` after pulling to pick up new options.
 
 New windows are logged to `/tmp/norns.log` with their `app_id`, which is what
 rules match on.

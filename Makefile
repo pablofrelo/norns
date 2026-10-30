@@ -15,6 +15,9 @@ SRCS = norns.c urd.c sensors.c shm.c anim.c deco.c tray.c sfx.c fx.c verdandi.c 
 norns: $(SRCS) $(HDRS) norns.h config.h
 	$(CC) $(CFLAGS) -o $@ $(SRCS) $(LDLIBS)
 
+config.h:
+	cp config.def.h $@
+
 protocol/%-client-protocol.h: $(PROTO_DIR)/%.xml
 	@mkdir -p protocol
 	wayland-scanner client-header $< $@

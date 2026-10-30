@@ -10,7 +10,7 @@ commitów są po polsku, README po angielsku.
 |---|---|
 | `norns.c` | WM: drzewa BSP, tagi, monitory, fokus, skróty (`run()`), mysz (przesuwanie/rozmiar), reguły, pełny ekran, terminal wysuwany, zrzuty, wyłącznik, norns-ctl (D-Bus), zapis/odtwarzanie układu, pętla `main()` |
 | `norns.h` | wspólne struktury (`win`, `output`, `node`, `surf`, `tray_item`, `note`, `tmenu`) i deklaracje |
-| `config.h` | stałe (`GAP`, `BORDER`, czasy animacji, rozmiary) oraz tablice: motywy, programy, `keys[]`, `help_lines[]`, `rules[]`, `float_app_ids[]` |
+| `config.def.h` | domyślna konfiguracja; `make` kopiuje ją do `config.h` (poza gitem), jeśli go nie ma. Nowa opcja → do `config.def.h`. Stałe (`GAP`, `BORDER`, czasy animacji, rozmiary) oraz tablice: motywy, programy, `keys[]`, `help_lines[]`, `rules[]`, `float_app_ids[]` |
 | `urd.c` | pasek (tagi, tytuł, sensory, zasobnik, zegar, motyw), tapeta (gwiazdy, kometa), powiadomienia i menu zasobnika — rysowanie; kliki myszy na własnych powierzchniach |
 | `anim.c` | ślizg tagów, dojazd okien, otwieranie jak kineskop, ślizg terminala wysuwanego |
 | `deco.c` | poświata / cień wokół okien (4 paski dekoracji) |
