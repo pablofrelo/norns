@@ -57,6 +57,8 @@ commitów są po polsku, README po angielsku.
   w kolejce; jeśli działa mako, przejmujemy po jego zakończeniu.
 - **foot zaokrągla pływające okna** do pełnych znaków — środek liczymy
   z prawdziwego rozmiaru (`dw/dh`), nie z zaproponowanego.
+- **Znikające monitory** (tty, odpięty dock): układ sprzed pierwszego
+  odłączenia trafia do `parked`; gdy wrócą wszystkie, `unpark()` go przywraca.
 - **Układ** zapisuje się do `$XDG_RUNTIME_DIR/norns/layout` po każdej
   sekwencji manage; okna po `river_window_v1.identifier`.
 

@@ -1156,10 +1156,13 @@ static const struct river_window_v1_listener win_listener = {
 /* ---------- river_output_v1 ---------- */
 
 /* Monitor znika: jego okna odpinamy, manage przypnie je do innego. */
+static void park_layout(void);
+
 static void out_removed(void *data, struct river_output_v1 *ro)
 {
 	struct output *o = data;
 	struct win *w;
+	park_layout();                      /* zanim okna zjadą na pozostałe monitory */
 	wl_list_for_each(w, &windows, link)
 		if (w->out == o)
 			detach(w);
@@ -1751,6 +1754,32 @@ static void layout_save(void)
 	}
 }
 
+/* Monitor znika (przełączenie na tty, odpięty dock): zapamiętujemy układ sprzed
+ * pierwszego odłączenia. Gdy wrócą wszystkie monitory, unpark() przywraca go
+ * tak jak po restarcie norns, zamiast zostawiać okna zwalone na jeden ekran. */
+static char *parked;
+static int parked_nout;
+
+static void park_layout(void)
+{
+	if (parked || !last_written)
+		return;
+	parked = strdup(last_written);
+	parked_nout = wl_list_length(&outputs);
+}
+
+static void unpark(void)
+{
+	struct win *w;
+	wl_list_for_each(w, &windows, link)
+		if (w->out && !w->drop)
+			detach(w);
+	free(saved_layout);
+	saved_layout = parked;
+	parked = NULL;
+	layout_restore();
+}
+
 static void wm_manage_start(void *d, struct river_window_manager_v1 *m)
 {
 	struct output *o, *act = active_output();
@@ -1760,6 +1789,9 @@ static void wm_manage_start(void *d, struct river_window_manager_v1 *m)
 	/* po restarcie norns: okna z zapisanego układu wracają na swoje miejsca */
 	if (restore_state == RESTORE_PENDING && (outputs_described() || now_ms() > restore_deadline))
 		layout_restore();
+	else if (parked && restore_state != RESTORE_PENDING && outputs_described() &&
+	         wl_list_length(&outputs) >= parked_nout)
+		unpark();
 
 	/* nowe i osierocone okna lądują na aktywnym monitorze */
 	wl_list_for_each(w, &windows, link) {
