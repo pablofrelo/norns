@@ -269,6 +269,15 @@ static const struct rule rules[] = {
 };
 #define NRULES (sizeof rules / sizeof rules[0])
 
+/* Tapety z plików (PNG) zamiast rysowanej — dla motywu i monitora (fragment
+ * opisu jak w rules[]). "~/" to katalog domowy. Obraz wypełnia cały ekran,
+ * nadmiar przycięty. Monitor bez wpisu dostaje tapetę motywu. */
+static const struct wallpaper wallpapers[] = {
+	{ "gruvbox", "1O0R9HA001785", "~/Pictures/Wallpapers/ygg_0.png" },     /* lewy AOC */
+	{ "gruvbox", "1O0R9HA001780", "~/Pictures/Wallpapers/ygg_1.png" },     /* prawy AOC */
+	{ "gruvbox", "0x41A0",        "~/Pictures/Wallpapers/Ripley_1.png" },  /* laptop */
+};
+
 /* Okna, które zawsze pływają (np. wybór pliku z portalu, który nie podaje rodzica). */
 static const char *const float_app_ids[] = {
 	"xdg-desktop-portal-gtk",

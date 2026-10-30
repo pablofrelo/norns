@@ -1208,6 +1208,27 @@ static struct output *rule_output(const char *match)
 	return NULL;
 }
 
+const char *wallpaper_for(const struct output *o)
+{
+	static char path[512];
+	struct wlout *wo;
+	for (size_t i = 0; i < sizeof wallpapers / sizeof wallpapers[0]; i++) {
+		const struct wallpaper *p = &wallpapers[i];
+		if (strcmp(p->theme, THEME->name))
+			continue;
+		wl_list_for_each(wo, &wlouts, link)
+			if (wo->name == o->wl_name &&
+			    ((wo->desc && strstr(wo->desc, p->output)) || (wo->conn && strstr(wo->conn, p->output)))) {
+				if (!strncmp(p->path, "~/", 2))
+					snprintf(path, sizeof path, "%s/%s", getenv("HOME"), p->path + 2);
+				else
+					snprintf(path, sizeof path, "%s", p->path);
+				return path;
+			}
+	}
+	return NULL;
+}
+
 static const struct rule *rule_for(struct win *w)
 {
 	for (size_t i = 0; w->app_id && i < NRULES; i++)

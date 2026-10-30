@@ -199,6 +199,9 @@ void fx_render(void);                                   /* w sekwencji render, n
 void fx_output_fini(struct output *o);
 void fx_window_closed(struct win *w);                     /* duszek zamykanego okna */
 bool fx_ghosts_busy(void);
+const char *wallpaper_for(const struct output *o);       /* plik tapety dla motywu i monitora albo NULL */
+pixman_image_t *load_png(const char *path);              /* tray.c; zwalniać pic_free() */
+void pic_free(pixman_image_t *img);
 void sfx_typing(const char *text, int ms);              /* stukot klawiszy do powiadomienia */
 void sfx_drop(bool up);                                 /* serwo terminala wysuwanego */
 const char *sfx_path(const char *name);                 /* ścieżka wygenerowanego dźwięku */
@@ -320,6 +323,12 @@ struct rule {
 	const char *app_id;
 	const char *output;             /* fragment opisu monitora */
 	int tag;                        /* 1–9, 0 = aktualnie widoczny */
+};
+
+struct wallpaper {
+	const char *theme;              /* nazwa motywu */
+	const char *output;             /* fragment opisu monitora */
+	const char *path;
 };
 
 #define NORNS_TYPES_DONE

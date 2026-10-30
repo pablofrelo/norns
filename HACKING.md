@@ -71,6 +71,8 @@ commitów są po polsku, README po angielsku.
   komunikacie pomocy + przykład w README.
 - **Dźwięk**: generator w sfx.c, plik w `$XDG_RUNTIME_DIR/norns/`
   tworzony w `sfx_init()`, odtwarzanie przez `pw-play`.
+- **Tapeta z pliku**: wpis w `wallpapers[]` (config.h) — motyw, fragment opisu
+  monitora, ścieżka do PNG; rysuje `sky_full()` w urd.c.
 - **Kolor/czcionka**: tylko przez motyw (`THEME->...`), nigdy na sztywno.
 
 ## Budowanie i testy

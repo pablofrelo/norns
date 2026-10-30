@@ -42,7 +42,7 @@ static pixman_image_t *from_argb_be(int w, int h, const uint8_t *src)
 	return pixman_image_create_bits(PIXMAN_a8r8g8b8, w, h, px, w * 4);
 }
 
-static void icon_free(pixman_image_t *img)
+void pic_free(pixman_image_t *img)
 {
 	if (!img)
 		return;
@@ -51,7 +51,7 @@ static void icon_free(pixman_image_t *img)
 	free(data);
 }
 
-static pixman_image_t *load_png(const char *path)
+pixman_image_t *load_png(const char *path)
 {
 	png_image png = { .version = PNG_IMAGE_VERSION };
 	if (!png_image_begin_read_from_file(&png, path))
@@ -121,8 +121,8 @@ static void item_clear(struct tray_item *it)
 {
 	sd_bus_slot_unref(it->sig_slot);
 	sd_bus_slot_unref(it->get_slot);
-	icon_free(it->icon);
-	icon_free(it->tinted);
+	pic_free(it->icon);
+	pic_free(it->tinted);
 	free(it->service);
 	free(it->path);
 	free(it->id);
@@ -160,7 +160,7 @@ static int on_props(sd_bus_message *m, void *userdata, sd_bus_error *err)
 				sd_bus_message_read_array(m, 'y', &data, &len);
 				int d = abs(w - want);
 				if (w > 0 && h > 0 && len >= (size_t)w * h * 4 && d < best_d) {
-					icon_free(best);
+					pic_free(best);
 					best = from_argb_be(w, h, data);
 					best_d = d;
 				}
@@ -206,12 +206,12 @@ static int on_props(sd_bus_message *m, void *userdata, sd_bus_error *err)
 	/* nazwa z motywu ma pierwszeństwo nad pikselami, jak w innych zasobnikach */
 	pixman_image_t *img = icon_name ? icon_by_name(icon_name, theme_path) : NULL;
 	if (img) {
-		icon_free(best);
+		pic_free(best);
 		best = img;
 	}
 	if (best || !it->icon) {
-		icon_free(it->icon);
-		icon_free(it->tinted);              /* wersja w kolorze motywu powstanie od nowa */
+		pic_free(it->icon);
+		pic_free(it->tinted);              /* wersja w kolorze motywu powstanie od nowa */
 		it->tinted = NULL;
 		it->icon = best;
 	}

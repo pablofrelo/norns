@@ -394,6 +394,8 @@ struct sky {
 	float cx, cy, vx, vy;           /* start i prędkość (px/ms) */
 	uint32_t seed;
 	uint64_t last_frame;
+	pixman_image_t *pic;            /* tapeta z pliku (wallpapers[] w config.h) */
+	char *pic_path;
 };
 
 /* Prosty, powtarzalny generator. */
@@ -487,9 +489,46 @@ static int comet_points(struct sky *k, uint64_t now, int pts[TRAIL][2], uint32_t
 	return n;
 }
 
+/* Obraz z pliku, wczytany raz na monitor; NULL, gdy brak wpisu albo pliku. */
+static pixman_image_t *sky_pic(struct output *o, struct sky *k)
+{
+	const char *path = wallpaper_for(o);
+	if (path && k->pic_path && !strcmp(path, k->pic_path))
+		return k->pic;
+	pic_free(k->pic);
+	free(k->pic_path);
+	k->pic = path ? load_png(path) : NULL;
+	k->pic_path = path ? strdup(path) : NULL;
+	if (path && !k->pic)
+		fprintf(stderr, "norns: tapeta %s — nie da się wczytać (tylko PNG)\n", path);
+	return k->pic;
+}
+
+/* Wypełnia cały ekran obrazem z zachowaniem proporcji; nadmiar przycięty po równo. */
+static void draw_pic(pixman_image_t *dst, pixman_image_t *pic, int w, int h)
+{
+	int pw = pixman_image_get_width(pic), ph = pixman_image_get_height(pic);
+	double s = fmax((double)w / pw, (double)h / ph);
+	struct pixman_f_transform f;
+	pixman_transform_t t;
+	pixman_f_transform_init_identity(&f);
+	f.m[0][0] = f.m[1][1] = 1 / s;                  /* piksel ekranu -> piksel obrazu */
+	f.m[0][2] = (pw * s - w) / 2 / s;
+	f.m[1][2] = (ph * s - h) / 2 / s;
+	pixman_transform_from_pixman_f_transform(&t, &f);
+	pixman_image_set_transform(pic, &t);
+	pixman_image_set_filter(pic, PIXMAN_FILTER_GOOD, NULL, 0);
+	pixman_image_composite32(PIXMAN_OP_SRC, pic, NULL, dst, 0, 0, 0, 0, 0, 0, w, h);
+}
+
 static void sky_full(struct output *o, struct sky *k, pixman_image_t *img, uint64_t now)
 {
 	const struct theme *t = THEME;
+	pixman_image_t *pic = sky_pic(o, k);
+	if (pic) {
+		draw_pic(img, pic, k->w, k->h);
+		return;
+	}
 	rect(img, 0, 0, k->w, k->h, t->wall);
 	if (t->look != LOOK_PHOSPHOR) {                          /* bez gwiazd */
 		if (t->look == LOOK_DOTS)
@@ -645,8 +684,8 @@ int urd_sky_frame(uint64_t now)
 	struct output *o;
 	wl_list_for_each(o, &outputs, link) {
 		struct sky *k = o->sky;
-		if (!k || !k->w || k->theme != theme_idx)
-			continue;
+		if (!k || !k->w || k->theme != theme_idx || k->pic)
+			continue;                           /* tapeta z pliku stoi w miejscu */
 		int n = sky_frame(o, k, now);
 		if (n < next)
 			next = n;
@@ -715,6 +754,8 @@ void urd_output_fini(struct output *o)
 	surf_fini(&o->menu);
 	if (o->sky) {
 		sky_free_bufs(o->sky);
+		pic_free(o->sky->pic);
+		free(o->sky->pic_path);
 		free(o->sky->stars);
 		free(o->sky);
 	}
