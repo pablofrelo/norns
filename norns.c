@@ -1208,11 +1208,16 @@ static struct output *rule_output(const char *match)
 	return NULL;
 }
 
+/* Liczniki jako zmienne, nie stałe wyrażenia: przy pustej tablicy w config.h
+ * pętla "i < 0" dałaby ostrzeżenie -Wtype-limits. */
+static const size_t nwallpapers = sizeof wallpapers / sizeof wallpapers[0];
+static const size_t nrules = NRULES;
+
 const char *wallpaper_for(const struct output *o)
 {
 	static char path[512];
 	struct wlout *wo;
-	for (size_t i = 0; i < sizeof wallpapers / sizeof wallpapers[0]; i++) {
+	for (size_t i = 0; i < nwallpapers; i++) {
 		const struct wallpaper *p = &wallpapers[i];
 		if (strcmp(p->theme, THEME->name))
 			continue;
@@ -1231,7 +1236,7 @@ const char *wallpaper_for(const struct output *o)
 
 static const struct rule *rule_for(struct win *w)
 {
-	for (size_t i = 0; w->app_id && i < NRULES; i++)
+	for (size_t i = 0; w->app_id && i < nrules; i++)
 		if (!strcmp(w->app_id, rules[i].app_id))
 			return &rules[i];
 	return NULL;
