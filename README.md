@@ -20,7 +20,8 @@ and used daily on my own machine.
 - BSP tiling with adjustable split ratios, gaps, focus follows mouse
 - nine tags per monitor, sliding animation between them
 - mouse: drag a tile onto another to swap, onto its edge to insert next to it,
-  onto an empty monitor to move it there; resize splits with Super+right drag
+  onto an empty monitor to move it there, back onto itself to even out all
+  splits on that tag; resize splits with Super+right drag
 - floating dialogs centred over their parent, Super+F to float any window
 - fullscreen (application requests and a key binding)
 - per-application rules: open an app on a chosen monitor, matched by serial
@@ -104,7 +105,7 @@ survives a crash:
 | Super+A | animations on/off |
 | Super+Ctrl+A | CRT scanlines on/off |
 | Super+Z | zen mode on/off |
-| Super+left drag | move (floating) / swap or insert (tiles) |
+| Super+left drag | move (floating) / swap or insert (tiles); drop a tile back on itself to even out the splits |
 | Super+right drag | resize (floating) / move split (tiles) |
 | volume keys | volume via wpctl |
 | Super+Esc | quit norns (river keeps running) |

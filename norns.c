@@ -339,10 +339,25 @@ static struct output *output_at(int x, int y)
 	return NULL;
 }
 
-/* Upuszczenie kafla w (x, y): środek innego kafla — zamiana, pas przy jego
- * krawędzi — wstawienie obok, pusta przestrzeń innego monitora — przeniesienie. */
+static void balance(struct node *n)
+{
+	if (!n || n->win)
+		return;
+	n->ratio = 0.5f;
+	balance(n->a);
+	balance(n->b);
+}
+
+/* Upuszczenie kafla w (x, y): z powrotem na siebie — równy podział całego tagu,
+ * środek innego kafla — zamiana, pas przy jego krawędzi — wstawienie obok,
+ * pusta przestrzeń innego monitora — przeniesienie. */
 static void drop_tile(struct win *w, int x, int y)
 {
+	struct node *own = w->leaf;
+	if (own && x >= own->x && x < own->x + own->w && y >= own->y && y < own->y + own->h) {
+		balance(w->out->roots[w->tag]);
+		return;
+	}
 	struct win *t = tile_at(x, y, w);
 	if (t) {
 		struct node *n = t->leaf;

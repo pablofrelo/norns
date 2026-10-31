@@ -237,7 +237,7 @@ static const char *const help_lines[] = {
 	"Super+A               animacje wł./wył.",
 	"Super+Ctrl+A          linie kineskopu wł./wył.",
 	"Super+Z               zen: motyw grafit, bez paska, przerw, ramek, powiadomień i dźwięków",
-	"Super+lewy przycisk   przesuń / zamień kafle",
+	"Super+lewy przycisk   przesuń / zamień kafle (upuść na sobie: równy podział)",
 	"Super+prawy przycisk  rozmiar / proporcje podziału",
 	"Super+Escape          wyjdź z norns",
 	"Super+Shift+L         zablokuj ekran",
