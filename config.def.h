@@ -7,7 +7,8 @@
 
 /* ---------- wygląd i ruch ---------- */
 
-#define GAP       12                /* przerwa między oknami; poświata = połowa */
+#define GAP       20                /* przerwa między oknami; poświata = połowa */
+#define BAR_ALPHA 0xd8              /* krycie tła paska urd (0xff = pełne); tekst zawsze pełny */
 #define BORDER    2                 /* ramka okna */
 #define FLOAT_R   18                /* poświata / cień okien pływających */
 #define SLIDE_MS  140               /* ślizg przy zmianie tagu */

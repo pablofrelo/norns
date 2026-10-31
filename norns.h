@@ -10,6 +10,9 @@
 #include "fractional-scale-v1-client-protocol.h"
 #include "viewporter-client-protocol.h"
 #include "config.h"                 /* GAP, BORDER, czasy animacji */
+#ifndef BAR_ALPHA                    /* starszy config.h bez tej stałej */
+#define BAR_ALPHA 0xff
+#endif
 
 #define NTAGS 9
 

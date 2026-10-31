@@ -283,10 +283,19 @@ static pixman_image_t *tinted_icon(struct tray_item *it, uint32_t rgb)
 }
 
 /*  [1]…[9]  tytuł okna ......  WG LAN CPU RAM °C BAT  Fri 23.10 21:41  [ GRUVBOX ] */
+/* Wypełnienie z kryciem a (0–255); bufor ARGB jest premultiplied. */
+static void rect_a(pixman_image_t *img, int x, int y, int w, int h, uint32_t rgb, int a)
+{
+	uint32_t r = ((rgb >> 16) & 0xff) * a / 255, g = ((rgb >> 8) & 0xff) * a / 255, b = (rgb & 0xff) * a / 255;
+	pixman_color_t c = { r * 0x101, g * 0x101, b * 0x101, a * 0x101 };
+	pixman_rectangle16_t box = { x, y, w, h };
+	pixman_image_fill_rectangles(PIXMAN_OP_SRC, img, &c, 1, &box);
+}
+
 static void draw_bar(struct output *o, pixman_image_t *img, int w, int h)
 {
 	const struct theme *t = THEME;
-	rect(img, 0, 0, w, h, t->bg);
+	rect_a(img, 0, 0, w, h, t->bg, BAR_ALPHA);
 	rect(img, 0, h - 1, w, 1, t->line);
 
 	int x = 0;
@@ -739,6 +748,7 @@ static void surf_fini(struct surf *s)
 void urd_output_init(struct output *o)
 {
 	surf_init(&o->bar, o, true);           /* pasek ostry przy skali ułamkowej */
+	o->bar.alpha = BAR_ALPHA < 0xff;       /* półprzezroczyste tło (BAR_ALPHA) */
 	surf_init(&o->wall, o, false);
 	surf_init(&o->note, o, true);
 	surf_init(&o->menu, o, true);
