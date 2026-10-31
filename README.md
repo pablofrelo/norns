@@ -154,6 +154,9 @@ lock, add swayidle to river's init (saver after 10 minutes, lock after 20):
     swayidle -w timeout 600 'norns-ctl saver on' resume 'norns-ctl saver off' \
                 timeout 1200 'norns-ctl lock' &
 
+Terminal opacity for foot is `TERM_ALPHA` (Super+Return) and `DROP_ALPHA`
+(slide-up terminal) in `config.h`; `NULL` leaves it to `foot.ini`.
+
 Saver timing (split interval, animation, number and minimum size of tiles) is in
 `config.h` (`SAVER_*`).
 

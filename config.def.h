@@ -17,6 +17,8 @@
 #define DROP_W        1280          /* terminal wysuwany: stały rozmiar (logiczne px), */
 #define DROP_H        700           /* na mniejszym ekranie najwyżej 90% obszaru */
 #define DROP_APP_ID   "norns-drop"
+#define TERM_ALPHA    "0.8"         /* krycie foota: Super+Return (NULL = jak w foot.ini) */
+#define DROP_ALPHA    "0.6"         /* krycie foota: terminal wysuwany (NULL = jak w foot.ini) */
 #define DROP_MS       500           /* wysuwanie od dołu / chowanie */
 #define TRAY_TINT     1             /* ikonki w zasobniku w kolorze motywu (0 = oryginalne) */
 #define NOTE_W        640           /* szerokość powiadomienia (logiczne px) */

@@ -803,6 +803,32 @@ static void drop_hide(struct win *w)
 	}
 }
 
+/* Terminal motywu; app_id i krycie (tylko foot: obie palety) — gdy podane. */
+static void spawn_term(const char *app_id, const char *alpha)
+{
+	static char aid[64], dark[48], light[48];
+	const char *argv[32];
+	int n = 0;
+	bool foot = !strcmp(THEME->term[0], "foot");
+	argv[n++] = THEME->term[0];
+	if (app_id) {
+		snprintf(aid, sizeof aid, "--app-id=%s", app_id);
+		argv[n++] = aid;
+	}
+	if (foot && alpha) {
+		snprintf(dark, sizeof dark, "colors-dark.alpha=%s", alpha);
+		snprintf(light, sizeof light, "colors-light.alpha=%s", alpha);
+		argv[n++] = "-o";
+		argv[n++] = dark;
+		argv[n++] = "-o";
+		argv[n++] = light;
+	}
+	for (const char *const *a = THEME->term + 1; *a && n < 30; a++)
+		argv[n++] = *a;
+	argv[n] = NULL;
+	spawn(argv);                    /* fork kopiuje bufory — static wystarczy */
+}
+
 static void drop_toggle(struct output *o)
 {
 	if (!o)
@@ -810,15 +836,8 @@ static void drop_toggle(struct output *o)
 	if (!drop_win) {
 		if (drop_spawning)
 			return;
-		const char *argv[24];
-		int n = 0;
-		argv[n++] = THEME->term[0];
-		argv[n++] = "--app-id=" DROP_APP_ID;
-		for (const char *const *a = THEME->term + 1; *a && n < 22; a++)
-			argv[n++] = *a;
-		argv[n] = NULL;
 		drop_spawning = true;
-		spawn(argv);
+		spawn_term(DROP_APP_ID, DROP_ALPHA);
 		return;
 	}
 	if (visible(drop_win) && drop_win->out == o && !drop_win->hiding)
@@ -925,8 +944,10 @@ static void run(const struct key *k)
 	case SPAWN:
 		if (!k->cmd && k->arg)
 			spawn_run(false);
+		else if (k->cmd)
+			spawn(k->cmd);
 		else
-			spawn(k->cmd ? k->cmd : THEME->term);
+			spawn_term(NULL, TERM_ALPHA);
 		break;
 	case CLOSE:
 		close_focused = true;
