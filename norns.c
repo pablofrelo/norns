@@ -2106,8 +2106,21 @@ static void wm_render_start(void *d, struct river_window_manager_v1 *m)
 		                            BORDER, C8(c >> 16), C8(c >> 8), C8(c), 0xffffffffu);
 	}
 
-	if (focused && focused->floating && visible(focused))
+	if (focused && focused->floating && visible(focused)) {
 		river_node_v1_place_top(focused->rn);  /* pływające z fokusem na wierzchu */
+		/* ...ale jego dialogi (np. „nadpisać?” nad wyborem pliku) zawsze nad nim:
+		 * fokus za myszą nie może schować pytania pod okno, które o nie pyta.
+		 * Lista okien jest w kolejności otwierania, więc głębsze lądują wyżej. */
+		wl_list_for_each(w, &windows, link) {
+			if (!visible(w))
+				continue;
+			for (struct win *p = w->parent; p; p = p->parent)
+				if (p == focused) {
+					river_node_v1_place_top(w->rn);
+					break;
+				}
+		}
+	}
 
 	struct output *o;
 	wl_list_for_each(o, &outputs, link)
