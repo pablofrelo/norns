@@ -127,6 +127,7 @@ struct win {
 	int min_w, min_h, max_w, max_h; /* podpowiedź rozmiaru od okna */
 	bool floating;                  /* pływa nad kafelkami, poza drzewem BSP */
 	bool sticky;                    /* pływające, widoczne na każdym tagu swojego monitora */
+	bool urgent;                    /* przysłało powiadomienie, a nie ma fokusu — tag mruga */
 	int float_pending;              /* 0 nic, 1 rozmiar wg okna, 2 zaproponuj 60% ekranu */
 	bool tiled_dirty;               /* trzeba powiedzieć oknu, czy jest kafelkiem */
 	int dw, dh;                     /* rzeczywisty rozmiar (event dimensions) */

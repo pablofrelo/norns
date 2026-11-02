@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <systemd/sd-bus.h>
 #include "norns.h"
 
@@ -106,6 +107,15 @@ static uint32_t note_put(const char *app, uint32_t replaces, const char *summary
 	n->keep = urgency == 2 || timeout == 0 ? 0 : timeout > 0 ? timeout : NOTE_MS;
 	n->expire = n->keep ? n->t0 + note_type_ms(note_chars(n)) + n->keep : 0;   /* czytanie po wypisaniu */
 	fprintf(stderr, "verdandi: powiadomienie %u od %s\n", n->id, n->app);
+	/* river nie mówi, które okno chce uwagi — za to wiemy, kto przysłał
+	 * powiadomienie: okno o tym app_id, niewidoczne, zaznacza swój tag na pasku */
+	bool mark = false;
+	struct win *w;
+	wl_list_for_each(w, &windows, link)
+		if (w != focused && !win_visible(w) && w->app_id && !strcasecmp(w->app_id, app) && !w->urgent)
+			mark = w->urgent = true;
+	if (mark)
+		urd_redraw_bars();
 	char all[sizeof n->summary + sizeof n->body];
 	snprintf(all, sizeof all, "%s%s", n->summary, n->body);    /* w tej kolejności się pisze */
 	sfx_typing(all, note_type_ms(note_chars(n)));

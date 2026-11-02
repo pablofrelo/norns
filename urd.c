@@ -307,8 +307,15 @@ static void draw_bar(struct output *o, pixman_image_t *img, int w, int h)
 		wl_list_for_each(wn, &windows, link)
 			if (wn->out == o && wn->tag == i && !wn->hidden)
 				busy = true;
+		bool urgent = false;
+		wl_list_for_each(wn, &windows, link)
+			if (wn->out == o && wn->tag == i && wn->urgent)
+				urgent = true;
 		uint32_t fg = busy ? t->fg : t->dim;
-		if (i == o->tag) {
+		if (urgent && i != o->tag && now_ms() / 2000 % 2 == 0) {   /* mruga w takt paska (2 s) */
+			rect(img, x, 0, cw, h - 1, t->warn);
+			fg = t->bg;
+		} else if (i == o->tag) {
 			rect(img, x, 0, cw, h - 1, t->focus);
 			fg = t->bg;
 		} else if (busy) {                         /* zajęty: ramka dookoła numeru */

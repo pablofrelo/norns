@@ -39,6 +39,9 @@ and used daily on my own machine.
   urd from com.canonical.dbusmenu, e.g. nm-applet's network list), clock, theme switch (the power menu is on Super+Shift+Escape)
 - screen lock: swaylock in the colours of the current theme by default, any
   ext-session-lock-v1 locker can be set in `config.h`
+- a tag blinks on the bar when an application on it sends a notification while
+  not focused (river does not pass urgency hints to the window manager, so the
+  notification's app name is matched against window app_ids)
 - verdandi, the built-in notification daemon (org.freedesktop.Notifications): notifications
   type themselves out at the top centre of every monitor; critical
   ones stay until clicked, a click runs the default action (if another daemon

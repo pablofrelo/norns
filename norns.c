@@ -180,6 +180,10 @@ static void set_focus(struct win *w)
 {
 	if (w && w->leaf && w->out)
 		w->out->mono[w->tag] = w;   /* monocle pokazuje ostatni kafel z fokusem */
+	if (w && w->urgent) {
+		w->urgent = false;
+		bars_dirty = true;
+	}
 	if (focused != w) {
 		focused = w;
 		focus_dirty = bars_dirty = true;   /* tytuł na pasku */
@@ -718,6 +722,10 @@ void view_tag(struct output *o, int tag)
 	anim_tag_switch(o, o->tag, tag);
 	o->tag = tag;
 	bars_dirty = true;
+	struct win *u;
+	wl_list_for_each(u, &windows, link)         /* obejrzany tag przestaje mrugać */
+		if (u->out == o && u->tag == tag)
+			u->urgent = false;
 	set_focus(first_on(o));
 	river_window_manager_v1_manage_dirty(wm);   /* z paska nie ma manage w drodze */
 }
