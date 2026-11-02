@@ -95,6 +95,9 @@ survives a crash:
 | Super+Shift+Escape | power menu: lock / log out / reboot / power off (fuzzel) |
 | Super+H/J/K/L | focus left/down/up/right (across monitors) |
 | Super+Ctrl+H/J/K/L | swap with the neighbour in that direction |
+| Super+Alt+H/J/K/L | move the nearest split line in that direction |
+| Super+= | even out all splits on the tag |
+| Super+R / Super+Ctrl+R | rotate the split above the window (side by side / stacked) / flip its sides |
 | Super+1…9 | show tag |
 | Super+Ctrl+1…9 | send window to tag |
 | Super+, / Super+. | focus previous / next monitor |

@@ -175,6 +175,7 @@ static const char *const vol_mute[] = { "wpctl", "set-mute", "@DEFAULT_AUDIO_SIN
 #undef CTRL                         /* glibc ma makro CTRL(x) w ttydefaults.h */
 #define CTRL  RIVER_SEAT_V1_MODIFIERS_CTRL
 #define SHIFT RIVER_SEAT_V1_MODIFIERS_SHIFT
+#define ALT   RIVER_SEAT_V1_MODIFIERS_MOD1
 #define TAGKEYS(n) \
 	{ SUPER,        XKB_KEY_##n, VIEW,     (n) - 1, NULL }, \
 	{ SUPER | CTRL, XKB_KEY_##n, SEND_TAG, (n) - 1, NULL }
@@ -209,6 +210,13 @@ static const struct key keys[] = {
 	{ SUPER | CTRL, XKB_KEY_j,      SWAP_DIR,  DOWN,  NULL },
 	{ SUPER | CTRL, XKB_KEY_k,      SWAP_DIR,  UP,    NULL },
 	{ SUPER | CTRL, XKB_KEY_l,      SWAP_DIR,  RIGHT, NULL },
+	{ SUPER | ALT,  XKB_KEY_h,      RESIZE_DIR, LEFT,  NULL },  /* linia podziału w lewo */
+	{ SUPER | ALT,  XKB_KEY_j,      RESIZE_DIR, DOWN,  NULL },
+	{ SUPER | ALT,  XKB_KEY_k,      RESIZE_DIR, UP,    NULL },
+	{ SUPER | ALT,  XKB_KEY_l,      RESIZE_DIR, RIGHT, NULL },
+	{ SUPER,        XKB_KEY_equal,  BALANCE,   0, NULL },  /* równy podział tagu */
+	{ SUPER,        XKB_KEY_r,      ROTATE,    0, NULL },  /* podział: poziom <-> pion */
+	{ SUPER | CTRL, XKB_KEY_r,      FLIP,      0, NULL },  /* podział: zamiana stron */
 	{ 0, XKB_KEY_XF86AudioRaiseVolume, VOLUME, 0, vol_up },
 	{ 0, XKB_KEY_XF86AudioLowerVolume, VOLUME, 0, vol_down },
 	{ 0, XKB_KEY_XF86AudioMute,        VOLUME, 0, vol_mute },
@@ -230,6 +238,9 @@ static const char *const help_lines[] = {
 	"Super+Q               zamknij okno",
 	"Super+H J K L         fokus w lewo/dół/górę/prawo (też między monitorami)",
 	"Super+Ctrl+H J K L    zamień okno z sąsiadem",
+	"Super+Alt+H J K L     przesuń linię podziału",
+	"Super+=               równy podział tagu",
+	"Super+R / Ctrl+R      obróć podział (poziom/pion) / zamień strony",
 	"Super+1…9             pokaż tag (na monitorze z fokusem)",
 	"Super+Ctrl+1…9        wyślij okno na tag",
 	"Super+, / .           poprzedni / następny monitor",

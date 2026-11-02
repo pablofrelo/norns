@@ -1002,6 +1002,36 @@ static void run(const struct key *k)
 			warp_focus = true;
 		}
 		break;
+	case ROTATE:                        /* podział nad oknem: poziom <-> pion */
+	case FLIP:                          /* ...albo zamiana stron */
+		if (focused && focused->leaf && focused->leaf->parent) {
+			struct node *p = focused->leaf->parent;
+			if (k->act == ROTATE) {
+				p->side_by_side = !p->side_by_side;
+			} else {
+				struct node *t = p->a;
+				p->a = p->b;
+				p->b = t;
+				p->ratio = 1 - p->ratio;
+			}
+			warp_focus = true;
+		}
+		break;
+	case RESIZE_DIR:                    /* przesuń najbliższą linię podziału w tę stronę */
+		if (focused && focused->leaf && visible(focused)) {
+			bool horiz = k->arg == LEFT || k->arg == RIGHT, plus = k->arg == RIGHT || k->arg == DOWN;
+			/* w prawo/dół: najpierw własna prawa/dolna krawędź (okno rośnie), potem lewa/górna */
+			struct node *p = edge_split(focused, horiz, plus);
+			if (!p)
+				p = edge_split(focused, horiz, !plus);
+			if (p)
+				p->ratio = clamp_ratio(p->ratio + (plus ? 0.05f : -0.05f));
+		}
+		break;
+	case BALANCE:
+		if (o)
+			balance(o->roots[o->tag]);
+		break;
 	case SWAP_DIR:
 		if (focused && focused->leaf && visible(focused) && (n_w = dir_neighbor(focused, k->arg, true))) {
 			swap_wins(focused, n_w);
