@@ -144,7 +144,7 @@ void anim_render_window(struct win *w, uint64_t now)
 
 	/* ślizg tagów: nowy wjeżdża, stary wyjeżdża w przeciwną stronę */
 	int off = 0;
-	if (slide) {
+	if (slide && !w->sticky) {          /* przypięte stoi w miejscu */
 		double e = ease(progress(o->slide_t0, now, SLIDE_MS));
 		int d = o->slide_dir * o->w;
 		off = vis ? (int)((1.0 - e) * d) : (int)(-e * d);

@@ -126,6 +126,7 @@ struct win {
 	struct win *parent;             /* dialog -> okno, do którego należy */
 	int min_w, min_h, max_w, max_h; /* podpowiedź rozmiaru od okna */
 	bool floating;                  /* pływa nad kafelkami, poza drzewem BSP */
+	bool sticky;                    /* pływające, widoczne na każdym tagu swojego monitora */
 	int float_pending;              /* 0 nic, 1 rozmiar wg okna, 2 zaproponuj 60% ekranu */
 	bool tiled_dirty;               /* trzeba powiedzieć oknu, czy jest kafelkiem */
 	int dw, dh;                     /* rzeczywisty rozmiar (event dimensions) */
@@ -166,7 +167,7 @@ static inline struct win *mono_win(const struct output *o, int tag)
 
 static inline bool win_visible(const struct win *w)
 {
-	if (!w->out || w->hidden || w->tag != w->out->tag)
+	if (!w->out || w->hidden || (w->tag != w->out->tag && !w->sticky))
 		return false;
 	struct win *m = w->leaf ? mono_win(w->out, w->tag) : NULL;
 	return !m || m == w;            /* monocle: pozostałe kafle schowane */
@@ -332,7 +333,7 @@ void ctl_init(struct sd_bus *bus);     /* norns.c: polecenia z norns-ctl */   /*
 enum action { SPAWN, CLOSE, QUIT, VIEW, SEND_TAG, FOCUS_OUT, SEND_OUT, THEME_TOGGLE, FLOAT_TOGGLE,
               ANIM_TOGGLE, FULLSCREEN_TOGGLE, VOLUME, FOCUS_DIR, SWAP_DIR, CRT_TOGGLE, ZEN_TOGGLE,
               HELP, DROP_TOGGLE, SHOT, POWER_MENU, LOCK,
-              ROTATE, FLIP, RESIZE_DIR, BALANCE, MONOCLE };
+              ROTATE, FLIP, RESIZE_DIR, BALANCE, MONOCLE, STICKY };
 enum { LEFT, DOWN, UP, RIGHT };
 
 struct key {

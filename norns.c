@@ -1071,12 +1071,28 @@ static void run(const struct key *k)
 	case THEME_TOGGLE:
 		toggle_theme();
 		break;
+	case STICKY:                        /* przypięte: na każdym tagu (kafel najpierw zaczyna pływać) */
+		if (focused && focused->out && !focused->drop) {
+			if (!focused->floating) {
+				struct output *fo = focused->out;
+				int tag = focused->tag;
+				detach(focused);
+				focused->floating = true;
+				focused->float_pending = 2;
+				focused->tiled_dirty = true;
+				attach(focused, fo, tag);
+			}
+			focused->sticky = !focused->sticky;
+			norns_notice("Przypięte", focused->sticky ? "na każdym tagu" : "tylko na swoim tagu");
+		}
+		break;
 	case FLOAT_TOGGLE:
 		if (focused && focused->out && !focused->drop) {        /* terminal wysuwany zawsze pływa */
 			struct output *fo = focused->out;
 			int tag = focused->tag;
 			detach(focused);
 			focused->floating = !focused->floating;
+			focused->sticky = false;        /* przypięte jest tylko pływające */
 			focused->float_pending = focused->floating ? 2 : 0;
 			focused->pw = focused->ph = -1;     /* kafelek dostanie rozmiar od nowa */
 			focused->tiled_dirty = true;
