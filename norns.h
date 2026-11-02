@@ -140,6 +140,8 @@ struct win {
 	int drop_from, drop_to;         /* wysuwanie: skąd i dokąd jedzie (y) */
 	uint64_t drop_t0;
 	int drag_dx, drag_dy;           /* kafel niesiony za kursorem */
+	int pid;                        /* proces okna (river, „unreliable”) */
+	struct win *swallowed;          /* terminal połknięty przez to okno */
 
 	/* animacja (anim.c) */
 	bool shown, ever_shown, clip_on;

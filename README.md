@@ -23,6 +23,9 @@ and used daily on my own machine.
   onto an empty monitor to move it there, back onto itself to even out all
   splits on that tag; resize splits with Super+right drag
 - floating dialogs centred over their parent, Super+F to float any window
+- window swallowing: a window started from a terminal tile (e.g. `mpv` from foot)
+  takes the terminal's place, which comes back when the window closes
+  (`SWALLOW_IDS` in `config.h`)
 - fullscreen (application requests and a key binding)
 - per-application rules: open an app on a chosen monitor, matched by serial
   number, not by the changing DP-n connector name

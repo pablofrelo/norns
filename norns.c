@@ -198,6 +198,66 @@ static struct win *first_on(struct output *o)
 	return m ? m : r ? first_leaf(r)->win : NULL;
 }
 
+/* ---------- połykanie okien (jak swallow w dwm) ---------- */
+
+#ifndef SWALLOW_IDS
+#define SWALLOW_IDS "foot", "footclient"
+#endif
+static const char *const swallow_ids[] = { SWALLOW_IDS, NULL };
+
+static bool is_swallower(const struct win *w)
+{
+	for (int i = 0; w->app_id && swallow_ids[i]; i++)
+		if (!strcmp(w->app_id, swallow_ids[i]))
+			return true;
+	return false;
+}
+
+static int ppid_of(int pid)
+{
+	char path[32], buf[512];
+	snprintf(path, sizeof path, "/proc/%d/stat", pid);
+	FILE *f = fopen(path, "r");
+	if (!f)
+		return 0;
+	size_t n = fread(buf, 1, sizeof buf - 1, f);
+	fclose(f);
+	buf[n] = 0;
+	char *p = strrchr(buf, ')');            /* nazwa procesu może mieć spacje i nawiasy */
+	int ppid = 0;
+	if (p && sscanf(p + 1, " %*c %d", &ppid) != 1)
+		ppid = 0;
+	return ppid;
+}
+
+/* Terminal-kafel, z którego (przez powłokę) odpalono nowe okno. */
+static struct win *swallow_target(struct win *w)
+{
+	if (w->floating || w->pid <= 1 || is_swallower(w))
+		return NULL;
+	for (int pid = ppid_of(w->pid), i = 0; pid > 1 && i < 32; pid = ppid_of(pid), i++) {
+		struct win *t;
+		wl_list_for_each(t, &windows, link)
+			if (t != w && t->pid == pid && t->leaf && !t->drop && win_visible(t) && is_swallower(t))
+				return t;
+	}
+	return NULL;
+}
+
+/* Nowe okno zajmuje kafel terminala, terminal czeka schowany. */
+static void swallow(struct win *w, struct win *t)
+{
+	struct node *l = t->leaf;
+	l->win = w;
+	w->leaf = l;
+	w->out = t->out;
+	w->tag = t->tag;
+	t->leaf = NULL;
+	t->hidden = true;
+	w->swallowed = t;
+	bars_dirty = true;
+}
+
 /* Monocle: wszystkie kafle dostają cały obszar (widać tylko jeden). */
 static void layout_mono(struct node *n, int x, int y, int w, int h)
 {
@@ -1143,6 +1203,18 @@ static void win_closed(void *data, struct river_window_v1 *rw)
 	fx_window_closed(w);                /* przed zmianą fokusu: kolor ramki */
 	if (w == drop_win)
 		drop_win = NULL;
+	struct win *t = w->swallowed;
+	if (t && w->leaf) {                 /* połknięty terminal wraca na swój kafel */
+		struct node *l = w->leaf;
+		l->win = t;
+		t->leaf = l;
+		t->out = w->out;
+		t->tag = w->tag;
+		t->hidden = false;
+		w->leaf = NULL;
+		if (focused == w)
+			set_focus(t);
+	}
 	if (w->leaf) {
 		struct node *p = bsp_remove(&w->out->roots[w->tag], w);
 		if (focused == w)
@@ -1151,9 +1223,12 @@ static void win_closed(void *data, struct river_window_v1 *rw)
 		set_focus(w->parent && visible(w->parent) ? w->parent : NULL);  /* dialog -> rodzic */
 	}
 	struct win *o;
-	wl_list_for_each(o, &windows, link)
+	wl_list_for_each(o, &windows, link) {
 		if (o->parent == w)
 			o->parent = NULL;
+		if (o->swallowed == w)
+			o->swallowed = NULL;        /* terminal zamknięty, zanim wrócił */
+	}
 	struct output *op_;
 	wl_list_for_each(op_, &outputs, link)
 		for (int t = 0; t < NTAGS; t++)
@@ -1235,7 +1310,11 @@ static void win_exit_fullscreen_requested(void *data, struct river_window_v1 *rw
 	w->fs_want = 2;
 }
 static void win_minimize_requested(void *d, struct river_window_v1 *rw) {}
-static void win_unreliable_pid(void *d, struct river_window_v1 *rw, int32_t pid) {}
+static void win_unreliable_pid(void *data, struct river_window_v1 *rw, int32_t pid)
+{
+	struct win *w = data;
+	w->pid = pid;
+}
 static void win_presentation_hint(void *d, struct river_window_v1 *rw, uint32_t h) {}
 static void win_identifier(void *data, struct river_window_v1 *rw, const char *id)
 {
@@ -1979,7 +2058,11 @@ static void wm_manage_start(void *d, struct river_window_manager_v1 *m)
 				tag = r->tag > 0 ? r->tag - 1 : ro->tag;
 			}
 		}
-		attach(w, to, tag);
+		struct win *sw = w->fresh ? swallow_target(w) : NULL;
+		if (sw)
+			swallow(w, sw);
+		else
+			attach(w, to, tag);
 		if (w->fresh) {
 			/* do /tmp/norns.log: przydatne przy pisaniu reguł i szukaniu zgubionych okien */
 			fprintf(stderr, "norns: nowe okno app_id=%s rodzic=%s %s, min %dx%d max %dx%d\n",
