@@ -178,6 +178,8 @@ static void layout(struct node *n, int x, int y, int w, int h)
 
 static void set_focus(struct win *w)
 {
+	if (w && w->leaf && w->out)
+		w->out->mono[w->tag] = w;   /* monocle pokazuje ostatni kafel z fokusem */
 	if (focused != w) {
 		focused = w;
 		focus_dirty = bars_dirty = true;   /* tytuł na pasku */
@@ -192,7 +194,35 @@ static bool visible(struct win *w)
 static struct win *first_on(struct output *o)
 {
 	struct node *r = o->roots[o->tag];
-	return r ? first_leaf(r)->win : NULL;
+	struct win *m = mono_win(o, o->tag);
+	return m ? m : r ? first_leaf(r)->win : NULL;
+}
+
+/* Monocle: wszystkie kafle dostają cały obszar (widać tylko jeden). */
+static void layout_mono(struct node *n, int x, int y, int w, int h)
+{
+	n->x = x; n->y = y; n->w = w; n->h = h;
+	if (n->win) {
+		int in = zen_on ? 0 : GAP / 2 + BORDER;
+		n->win->x = x + in;
+		n->win->y = y + in;
+		n->win->w = w - 2 * in > 1 ? w - 2 * in : 1;
+		n->win->h = h - 2 * in > 1 ? h - 2 * in : 1;
+		return;
+	}
+	layout_mono(n->a, x, y, w, h);
+	layout_mono(n->b, x, y, w, h);
+}
+
+static int leaves(struct node *n, struct win **out, int i)
+{
+	if (!n)
+		return i;
+	if (n->win) {
+		out[i] = n->win;
+		return i + 1;
+	}
+	return leaves(n->b, out, leaves(n->a, out, i));
 }
 
 /* Aktywny monitor: ten pod kursorem, potem ten z fokusem, potem pierwszy. */
@@ -997,6 +1027,14 @@ static void run(const struct key *k)
 		if (!focused || !visible(focused)) {
 			if (o)
 				set_focus(first_on(o));
+		} else if (focused->leaf && focused->out->monocle[focused->tag]) {
+			/* monocle: następny / poprzedni kafel tagu, w kółko */
+			struct win *all[64];
+			int n = leaves(focused->out->roots[focused->tag], all, 0), i = 0;
+			while (i < n && all[i] != focused)
+				i++;
+			if (n > 1 && i < n)
+				set_focus(all[(i + (k->arg == DOWN || k->arg == RIGHT ? 1 : n - 1)) % n]);
 		} else if ((n_w = dir_neighbor(focused, k->arg, false))) {
 			set_focus(n_w);
 			warp_focus = true;
@@ -1026,6 +1064,14 @@ static void run(const struct key *k)
 				p = edge_split(focused, horiz, !plus);
 			if (p)
 				p->ratio = clamp_ratio(p->ratio + (plus ? 0.05f : -0.05f));
+		}
+		break;
+	case MONOCLE:
+		if (o) {
+			o->monocle[o->tag] = !o->monocle[o->tag];
+			if (focused && focused->leaf && focused->out == o)
+				o->mono[o->tag] = focused;
+			norns_notice("Monocle", o->monocle[o->tag] ? "jedno okno na tagu" : "kafle");
 		}
 		break;
 	case BALANCE:
@@ -1108,6 +1154,11 @@ static void win_closed(void *data, struct river_window_v1 *rw)
 	wl_list_for_each(o, &windows, link)
 		if (o->parent == w)
 			o->parent = NULL;
+	struct output *op_;
+	wl_list_for_each(op_, &outputs, link)
+		for (int t = 0; t < NTAGS; t++)
+			if (op_->mono[t] == w)
+				op_->mono[t] = NULL;
 	bars_dirty = true;
 	if (hover == w)
 		hover = NULL;
@@ -2010,7 +2061,9 @@ static void wm_manage_start(void *d, struct river_window_manager_v1 *m)
 		o->ah = ah - (zen_on ? 0 : bh);
 
 		struct node *r = o->roots[o->tag];
-		if (r)
+		if (r && o->monocle[o->tag])
+			layout_mono(r, o->ax + g, o->ay + g, o->aw - 2 * g, o->ah - 2 * g);
+		else if (r)
 			layout(r, o->ax + g, o->ay + g, o->aw - 2 * g, o->ah - 2 * g);
 	}
 	bars_dirty = false;

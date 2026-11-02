@@ -217,6 +217,7 @@ static const struct key keys[] = {
 	{ SUPER,        XKB_KEY_equal,  BALANCE,   0, NULL },  /* równy podział tagu */
 	{ SUPER,        XKB_KEY_r,      ROTATE,    0, NULL },  /* podział: poziom <-> pion */
 	{ SUPER | CTRL, XKB_KEY_r,      FLIP,      0, NULL },  /* podział: zamiana stron */
+	{ SUPER,        XKB_KEY_m,      MONOCLE,   0, NULL },  /* tag: jedno okno na całość */
 	{ 0, XKB_KEY_XF86AudioRaiseVolume, VOLUME, 0, vol_up },
 	{ 0, XKB_KEY_XF86AudioLowerVolume, VOLUME, 0, vol_down },
 	{ 0, XKB_KEY_XF86AudioMute,        VOLUME, 0, vol_mute },
@@ -241,6 +242,7 @@ static const char *const help_lines[] = {
 	"Super+Alt+H J K L     przesuń linię podziału",
 	"Super+=               równy podział tagu",
 	"Super+R / Ctrl+R      obróć podział (poziom/pion) / zamień strony",
+	"Super+M               monocle: jedno okno na tagu (H J K L przełącza)",
 	"Super+1…9             pokaż tag (na monitorze z fokusem)",
 	"Super+Ctrl+1…9        wyślij okno na tag",
 	"Super+, / .           poprzedni / następny monitor",

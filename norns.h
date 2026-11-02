@@ -93,6 +93,8 @@ struct output {
 	int ux, uy, uw, uh;             /* obszar bez paneli (layer shell) */
 	struct node *roots[NTAGS];      /* osobne drzewo na każdy tag */
 	int tag;                        /* aktualnie widoczny tag */
+	bool monocle[NTAGS];            /* tag w trybie monocle: widać jeden kafel */
+	struct win *mono[NTAGS];        /* ...ten (ostatni z fokusem) */
 	struct surf bar, wall;
 	struct sky *sky;                /* żywa tapeta (urd.c) */
 	int slide_from, slide_dir;      /* animacja przełączania tagów */
@@ -153,9 +155,19 @@ struct win {
 	uint32_t deco_color;
 };
 
+/* Kafel pokazywany w monocle, jeśli wciąż leży na tym tagu. */
+static inline struct win *mono_win(const struct output *o, int tag)
+{
+	struct win *m = o->monocle[tag] ? o->mono[tag] : NULL;
+	return m && m->leaf && m->out == o && m->tag == tag && !m->hidden ? m : NULL;
+}
+
 static inline bool win_visible(const struct win *w)
 {
-	return w->out && !w->hidden && w->tag == w->out->tag;
+	if (!w->out || w->hidden || w->tag != w->out->tag)
+		return false;
+	struct win *m = w->leaf ? mono_win(w->out, w->tag) : NULL;
+	return !m || m == w;            /* monocle: pozostałe kafle schowane */
 }
 
 /* ---------- sensory (sensors.c) ---------- */
@@ -318,7 +330,7 @@ void ctl_init(struct sd_bus *bus);     /* norns.c: polecenia z norns-ctl */   /*
 enum action { SPAWN, CLOSE, QUIT, VIEW, SEND_TAG, FOCUS_OUT, SEND_OUT, THEME_TOGGLE, FLOAT_TOGGLE,
               ANIM_TOGGLE, FULLSCREEN_TOGGLE, VOLUME, FOCUS_DIR, SWAP_DIR, CRT_TOGGLE, ZEN_TOGGLE,
               HELP, DROP_TOGGLE, SHOT, POWER_MENU, LOCK,
-              ROTATE, FLIP, RESIZE_DIR, BALANCE };
+              ROTATE, FLIP, RESIZE_DIR, BALANCE, MONOCLE };
 enum { LEFT, DOWN, UP, RIGHT };
 
 struct key {

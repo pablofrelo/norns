@@ -97,6 +97,7 @@ survives a crash:
 | Super+Ctrl+H/J/K/L | swap with the neighbour in that direction |
 | Super+Alt+H/J/K/L | move the nearest split line in that direction |
 | Super+= | even out all splits on the tag |
+| Super+M | monocle on this tag: one window fills it, Super+H/J/K/L cycle |
 | Super+R / Super+Ctrl+R | rotate the split above the window (side by side / stacked) / flip its sides |
 | Super+1…9 | show tag |
 | Super+Ctrl+1…9 | send window to tag |
